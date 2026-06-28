@@ -1,6 +1,6 @@
 # VenHue
 
-VenHue is a program that syncs your Phillips Hue lights to in-game venue lighting from Rock Band 3 Deluxe on RPCS3. At the moment, only charts with MIDI venues are supported.
+VenHue is a program that syncs your Phillips Hue lights to in-game venue lighting from Rock Band 3 Deluxe on RPCS3. At the moment, only charts with MIDI venues are supported, and effects applied to Phillips Hue lights are only static colors.
 
 ## Requirements
 
@@ -37,4 +37,4 @@ The output will be at `build\Release\appVenHue.exe`.
 
 ## Usage
 
-VenHue requires a custom build of Rock Band 3 Deluxe, which you can pull from here. Before getting started, make sure that at least one Entertainment Area has been created via the Phillips Hue app. Upon launching the program, select RPCS3 and navigate to your Rock Band 3 USRDIR folder. Then, search for your Phillips Hue bridge and click connect. After that, you will need to press the sync button on your Phillips Hue bridge. Select an entertainment area, then you should be set up.
+VenHue requires a custom build of Rock Band 3 Deluxe, which you can pull from the "develop" branch [here](https://github.com/faris0064/rock-band-3-deluxe). Before getting started, make sure that at least one Entertainment Area has been created via the Phillips Hue app. Upon launching the program, select RPCS3 and navigate to your Rock Band 3 USRDIR folder. Then, search for your Phillips Hue bridge and click connect. After that, you will need to press the sync button on your Phillips Hue bridge. Select an entertainment area, then you should be set up.
