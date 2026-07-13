@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+
+exec clang++ -include cstdint -include cstring "$@"

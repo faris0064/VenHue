@@ -1,4 +1,3 @@
-# I don't think this even compiles correctly on linux anymore
 cmake_minimum_required(VERSION 3.16)
 
 project(VenHue VERSION 0.1 LANGUAGES CXX)
@@ -7,58 +6,93 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT MSVC)
-    add_compile_options(-Wno-deprecated)
-    add_compile_options(-Wno-dynamic-exception-spec)
-    add_compile_definitions(NOMINMAX)
+    add_compile_options(-Wno-deprecated -Wno-dynamic-exception-spec)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Widgets)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Network Quick Widgets)
 
-file(GLOB SOURCES "src/*.cpp")
-file(GLOB HEADERS "include/*.h")
-file(GLOB RESOURCES "resources/*")
+set(VENHUE_EDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK" CACHE PATH
+    "Path to the Philips Hue EDK source")
+set(VENHUE_EDK_BUILD_DIR "${VENHUE_EDK_ROOT}/build" CACHE PATH
+    "Path to the Philips Hue EDK build")
 
-include_directories(
-    "include"
-    "libs/EDK-2.2.0/libhuestream"                          
-    "libs/EDK-2.2.0/libhuestream/bridgediscovery/include"  
-    "libs/EDK-2.2.0/libhuestream/support/include"          
-    "libs/EDK-2.2.0/build/external_install/include"        
-)
+set(_venhue_edk_build_command
+    "cmake -S \"${VENHUE_EDK_ROOT}\" -B \"${VENHUE_EDK_BUILD_DIR}\" -DBUILD_TEST=OFF -DBUILD_EXAMPLES=OFF -DBUILD_TOOLS=OFF -DBUILD_SWIG=OFF -DBUILD_WRAPPERS=OFF, then cmake --build \"${VENHUE_EDK_BUILD_DIR}\" --config Release")
 
-# Phillips Hue EDK libraries
-set(EDK_LIBRARIES
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/bin/huestream.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/bin/bridge_discovery.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/bin/support.lib"
-)
+if(NOT EXISTS "${VENHUE_EDK_ROOT}/libhuestream/huestream/HueStream.h")
+    message(FATAL_ERROR
+        "Philips Hue EDK not found at ${VENHUE_EDK_ROOT}. "
+        "Pull EDK repo there or set VENHUE_EDK_ROOT.")
+endif()
 
-# libraries required by the Hue EDK
-set(EDK_EXTERNAL_LIBRARIES
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/edtls_client.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/everest.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/json.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/libcurl.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/mbedcl_wrapper.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/mbedcrypto.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/mbedtls.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/mbedx509.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/mdns_responder.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/nghttp2_static.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK-2.2.0/build/external_install/lib/p256m.lib"
-)
+set(_venhue_edk_library_dirs
+    "${VENHUE_EDK_BUILD_DIR}/bin"
+    "${VENHUE_EDK_BUILD_DIR}/external_install/lib"
+    "${VENHUE_EDK_BUILD_DIR}/external_install/lib64")
+
+function(venhue_find_edk_library variable)
+    find_library(${variable}
+        NAMES ${ARGN}
+        PATHS ${_venhue_edk_library_dirs}
+        NO_DEFAULT_PATH)
+    if(NOT ${variable})
+        list(JOIN ARGN ", " _names)
+        message(FATAL_ERROR
+            "Philips Hue EDK (${_names}) not found under ${VENHUE_EDK_BUILD_DIR}. "
+            "Build it first with ${_venhue_edk_build_command}")
+    endif()
+    set(${variable} "${${variable}}" PARENT_SCOPE)
+endfunction()
+
+venhue_find_edk_library(VENHUE_EDK_HUESTREAM huestream)
+venhue_find_edk_library(VENHUE_EDK_BRIDGE_DISCOVERY bridge_discovery)
+venhue_find_edk_library(VENHUE_EDK_SUPPORT support)
+venhue_find_edk_library(VENHUE_EDK_EDTLS_CLIENT edtls_client)
+venhue_find_edk_library(VENHUE_EDK_JSON json)
+venhue_find_edk_library(VENHUE_EDK_CURL curl libcurl)
+venhue_find_edk_library(VENHUE_EDK_MBEDCL_WRAPPER mbedcl_wrapper)
+venhue_find_edk_library(VENHUE_EDK_MBEDCRYPTO mbedcrypto)
+venhue_find_edk_library(VENHUE_EDK_MBEDTLS mbedtls)
+venhue_find_edk_library(VENHUE_EDK_MBEDX509 mbedx509)
+venhue_find_edk_library(VENHUE_EDK_MDNS_RESPONDER mdns_responder)
+venhue_find_edk_library(VENHUE_EDK_NGHTTP2 nghttp2_static)
+
+add_library(VenHueEDK INTERFACE IMPORTED)
+target_include_directories(VenHueEDK INTERFACE
+    "${VENHUE_EDK_ROOT}/libhuestream"
+    "${VENHUE_EDK_ROOT}/libhuestream/bridgediscovery/include"
+    "${VENHUE_EDK_ROOT}/libhuestream/support/include"
+    "${VENHUE_EDK_BUILD_DIR}/external_install/include")
+
+target_link_libraries(VenHueEDK INTERFACE
+    "${VENHUE_EDK_HUESTREAM}"
+    "${VENHUE_EDK_BRIDGE_DISCOVERY}"
+    "${VENHUE_EDK_SUPPORT}"
+    "${VENHUE_EDK_EDTLS_CLIENT}"
+    "${VENHUE_EDK_JSON}"
+    "${VENHUE_EDK_CURL}"
+    "${VENHUE_EDK_MBEDCL_WRAPPER}"
+    "${VENHUE_EDK_MBEDTLS}"
+    "${VENHUE_EDK_MBEDX509}"
+    "${VENHUE_EDK_MBEDCRYPTO}"
+    "${VENHUE_EDK_MDNS_RESPONDER}"
+    "${VENHUE_EDK_NGHTTP2}")
 
 if(WIN32)
-    set(SYSTEM_LIBRARIES
-        ws2_32       
-        iphlpapi     
-        netapi32     
-        bcrypt       
-        crypt32      
-        winmm
-        wldap32
-        normaliz
-    )
+    target_compile_definitions(VenHueEDK INTERFACE NOMINMAX)
+    target_link_libraries(VenHueEDK INTERFACE
+        ws2_32 iphlpapi netapi32 bcrypt crypt32 winmm wldap32 normaliz)
+else()
+    find_package(Threads REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(Brotli REQUIRED IMPORTED_TARGET libbrotlidec)
+    pkg_check_modules(Zstd REQUIRED IMPORTED_TARGET libzstd)
+    target_link_libraries(VenHueEDK INTERFACE
+        Threads::Threads
+        ${CMAKE_DL_LIBS}
+        m
+        PkgConfig::Brotli
+        PkgConfig::Zstd)
 endif()
 
 qt_standard_project_setup(REQUIRES 6.8)
@@ -87,24 +121,19 @@ qt_add_qml_module(appVenHue
         include/parser.h
 )
 
-# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# If you are developing for iOS or macOS you should consider setting an
-# explicit, fixed bundle identifier manually though.
 set_target_properties(appVenHue PROPERTIES
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appVenHue
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
 
-target_link_libraries(appVenHue
-    PRIVATE 
+target_include_directories(appVenHue PRIVATE include)
+target_link_libraries(appVenHue PRIVATE
+    Qt6::Network
     Qt6::Quick
     Qt6::Widgets
-    ${EDK_LIBRARIES}
-    ${EDK_EXTERNAL_LIBRARIES}
-    ${SYSTEM_LIBRARIES}
+    VenHueEDK
 )
 
 include(GNUInstallDirs)

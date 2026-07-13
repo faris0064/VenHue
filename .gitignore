@@ -81,8 +81,9 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 
-# cannot redistribute Hue EDK source
-libs/EDK-*/
+# Cannot redistribute Hue EDK source
+/libs/EDK/
+/CMakeUserPresets.json
 
 /.vscode
 /.qtcreator
