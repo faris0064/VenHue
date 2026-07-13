@@ -91,3 +91,5 @@ CMakeLists.txt.user*
 /.vs
 /notes
 /.cache
+/log.txt
+/bridge.json
