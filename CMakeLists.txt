@@ -108,12 +108,14 @@ qt_add_qml_module(appVenHue
         Main.qml
     SOURCES
         src/controller.cpp
+        src/hue_connection_state.cpp
         src/light_director.cpp
         src/venue_monitor.cpp
         src/configuration_manager.cpp
         src/logger.cpp
         src/parser.cpp
         include/controller.h
+        include/hue_connection_state.h
         include/light_director.h
         include/venue_monitor.h
         include/configuration_manager.h

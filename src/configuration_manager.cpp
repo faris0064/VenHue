@@ -2,6 +2,7 @@
 #include "include/logger.h"
 #include <QDir>
 #include <QFile>
+#include <QStringList>
 #include <QtWidgets/QFileDialog>
 
 ConfigurationManager::ConfigurationManager(QObject *parent)
@@ -17,6 +18,9 @@ void ConfigurationManager::setUsrdirPath(const QString &path) {
     m_usrdirPath = path;
     validatePath(path);
     updatePaths();
+    if (m_isUsrdirPathValid) {
+        saveSettings();
+    }
 }
 
 void ConfigurationManager::browseForUsrdirPath() {
@@ -76,10 +80,6 @@ void ConfigurationManager::validatePath(const QString &path) {
         m_isUsrdirPathValid = isValid;
         emit usrdirPathValidChanged(isValid);
     }
-
-    if (isValid) {
-        saveSettings();
-    }
 }
 
 QString ConfigurationManager::getPlatform() const {
@@ -97,20 +97,48 @@ void ConfigurationManager::setPlatform(const QString &platform) {
 void ConfigurationManager::saveSettings() {
     QSettings settings;
     settings.setValue("rockband3/usrdir_path", m_usrdirPath);
-    settings.setValue("general/platform", m_platform);
+    settings.setValue("platform", m_platform);
     Logger::info("ConfigurationManager: Saved settings to storage");
 }
 
 void ConfigurationManager::loadSettings() {
     QSettings settings;
     QString savedPath = settings.value("rockband3/usrdir_path", "").toString();
-    m_platform = settings.value("general/platform", "").toString();
+    m_platform = settings.value("platform", "").toString();
+    bool migratePlatform = false;
+
+    if (m_platform.isEmpty()) {
+        const QStringList legacyPlatformKeys = {"General/platform", "general/platform"};
+        for (const QString &key : legacyPlatformKeys) {
+            const QString legacyPlatform = settings.value(key, "").toString();
+            if (!legacyPlatform.isEmpty()) {
+                m_platform = legacyPlatform;
+                migratePlatform = true;
+                break;
+            }
+        }
+    }
 
     if (!savedPath.isEmpty()) {
         m_usrdirPath = savedPath;
         validatePath(savedPath);
         updatePaths();
         Logger::info("ConfigurationManager: Loaded USRDIR path from settings");
+    }
+
+    if (m_platform.isEmpty() && m_isUsrdirPathValid) {
+        m_platform = "RPCS3";
+        migratePlatform = true;
+    }
+
+    if (migratePlatform) {
+        settings.setValue("platform", m_platform);
+        settings.sync();
+        if (settings.status() == QSettings::NoError) {
+            settings.remove("General/platform");
+            settings.remove("general/platform");
+            settings.sync();
+        }
     }
     
     if (!m_platform.isEmpty()) {

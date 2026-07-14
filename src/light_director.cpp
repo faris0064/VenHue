@@ -1,5 +1,6 @@
 #include "light_director.h"
 #include <QHostInfo>
+#include <QMetaObject>
 #include <QTimer>
 #include <huestream/HueStream.h>
 #include <huestream/effect/effects/AreaEffect.h>
@@ -8,195 +9,300 @@
 #include <logger.h>
 
 LightDirector::LightDirector(QObject *parent)
-    : QObject(parent), m_bridgeStatus("No bridge connected"), m_bridgeFound(false),
-      m_isStreaming(false), m_shouldAutoReconnect(false), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
+    : QObject(parent), m_connectionState(new HueConnectionState(this)), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
     // huestream stores the config by itself, don't need to have any QSettings stuff for it anymore
     m_config = std::make_shared<huestream::Config>("VenHue", QHostInfo::localHostName().toStdString(), huestream::PersistenceEncryptionKey("VenHuePersistenceKey"));
     m_hueStream = std::make_shared<huestream::HueStream>(m_config);
 
     // Register connection flow feedback callback
     m_hueStream->RegisterFeedbackCallback([this](const huestream::FeedbackMessage &message) {
-        handleHueStreamFeedback(message);
+        const int messageId = static_cast<int>(message.GetId());
+        const int requestType = static_cast<int>(message.GetRequestType());
+        QMetaObject::invokeMethod(this, [this, messageId, requestType]() {
+            if (!m_shuttingDown) {
+                handleHueStreamFeedback(messageId, requestType);
+            } }, Qt::QueuedConnection);
     });
 }
 
-void LightDirector::handleHueStreamFeedback(const huestream::FeedbackMessage &message) {
-    Logger::hue(message.GetDebugMessage());
-
+void LightDirector::handleHueStreamFeedback(int rawMessageId, int rawRequestType) {
     using namespace huestream;
-    switch (message.GetId()) {
-        case FeedbackMessage::ID_FINISH_SEARCH_BRIDGES_FOUND:
-            m_bridgeFound = true;
-            emit bridgeFoundChanged(true);
-            updateBridgeStatus("Bridge found and ready to connect");
-            break;
+    const auto messageId = static_cast<FeedbackMessage::Id>(rawMessageId);
+    const auto requestType = static_cast<FeedbackMessage::RequestType>(rawRequestType);
+    Logger::hue("Hue feedback message=" + std::to_string(rawMessageId) + " request=" + std::to_string(rawRequestType));
 
+    switch (messageId) {
+        case FeedbackMessage::ID_START_SEARCHING:
+            m_connectionState->searching();
+            break;
         case FeedbackMessage::ID_PRESS_PUSH_LINK:
-            updateBridgeStatus("Press the link button on your Hue bridge...");
+            m_connectionState->awaitingLink();
             break;
-
         case FeedbackMessage::ID_FINISH_AUTHORIZING_AUTHORIZED:
-            updateBridgeStatus("Bridge paired sucessfully!");
-            emit bridgePaired();
+        case FeedbackMessage::ID_START_RETRIEVING:
+        case FeedbackMessage::ID_START_RETRIEVING_SMALL:
+        case FeedbackMessage::ID_FINISH_RETRIEVING_SMALL:
+            m_connectionState->loadingBridge();
             break;
-
-        case FeedbackMessage::ID_NO_BRIDGE_FOUND:
-            updateBridgeStatus("No bridge found.");
+        case FeedbackMessage::ID_START_SAVING:
+        case FeedbackMessage::ID_FINISH_SAVING_SAVED:
             break;
-
+        case FeedbackMessage::ID_BRIDGE_CONNECTED:
+            refreshEntertainmentAreas();
+            break;
         case FeedbackMessage::ID_FINISH_LOADING_BRIDGE_CONFIGURED:
-            m_bridgeFound = true;
-            emit bridgeFoundChanged(true);
-            
-            // Only auto-reconnect if we're loading at startup, not during manual search
-            // Otherwise hit a breakpoint in the EDK cause of deadlock
-            if (m_shouldAutoReconnect) {
-                updateBridgeStatus("Previous bridge found, reconnecting...");
-                m_hueStream->ConnectBridgeAsync();
-            } else {
-                updateBridgeStatus("Bridge found and ready to connect");
+            m_connectionState->bridgeLoaded(true);
+            refreshEntertainmentAreas();
+            m_connectionState->loadConfirmedArea(selectedAreaId(), selectedAreaName());
+            if (requestType == FeedbackMessage::REQUEST_TYPE_LOAD_BRIDGE) {
+                connectAfterCallback();
             }
-            
-            m_shouldAutoReconnect = false;
             break;
-
         case FeedbackMessage::ID_FINISH_LOADING_NO_BRIDGE_CONFIGURED:
-            updateBridgeStatus("No bridge paired. Search for a bridge to begin setup.");
+            m_connectionState->bridgeLoaded(false);
             break;
-
         case FeedbackMessage::ID_FINISH_RETRIEVING_READY_TO_START:
-        case FeedbackMessage::ID_FINISH_RETRIEVING_ACTION_REQUIRED: {
-            // Get a list of all available entertainment areas
-            m_availableAreas.clear();
-            auto groups = m_hueStream->GetLoadedBridgeGroups();
-            if (groups) {
-                for (const auto &group : *groups) {
-                    m_availableAreas.append(QString::fromStdString(group->GetName()));
-                }
+            refreshEntertainmentAreas();
+            m_connectionState->configurationRetrieved(m_connectionState->entertainmentAreas(), false);
+            break;
+        case FeedbackMessage::ID_FINISH_RETRIEVING_ACTION_REQUIRED:
+            refreshEntertainmentAreas();
+            m_connectionState->configurationRetrieved(m_connectionState->entertainmentAreas(), true);
+            break;
+        case FeedbackMessage::ID_SELECT_GROUP:
+            refreshEntertainmentAreas();
+            m_connectionState->requireAreaSelection();
+            break;
+        case FeedbackMessage::ID_BRIDGE_CHANGED:
+            refreshEntertainmentAreas();
+            break;
+        case FeedbackMessage::ID_GROUPLIST_UPDATED: {
+            const bool wasWaitingForAreas = m_connectionState->hueState() == HueConnectionState::NoAreas;
+            refreshEntertainmentAreas();
+            const auto areas = m_connectionState->entertainmentAreas();
+            if (wasWaitingForAreas && areas.size() == 1) {
+                selectEntertainmentArea(areas.front().id);
             }
-
-            updateBridgeStatus("Bridge connected! Select an entertainment area.");
-            emit areasAvailableChanged(true);
             break;
         }
-
-        case FeedbackMessage::ID_SELECT_GROUP:
-            Logger::info("Select an entertainment area");
-            updateBridgeStatus("Select an entertainment area.");
-            
-            // Populate areas if not already done
-            if (m_availableAreas.isEmpty()) {
-                auto groups = m_hueStream->GetLoadedBridgeGroups();
-                if (groups) {
-                    for (const auto &group : *groups) {
-                        m_availableAreas.append(QString::fromStdString(group->GetName()));
-                    }
-                }
-            }
-            emit areasAvailableChanged(!m_availableAreas.isEmpty());
+        case FeedbackMessage::ID_START_ACTIVATING:
+            m_connectionState->activatingArea();
             break;
-
+        case FeedbackMessage::ID_FINISH_ACTIVATING_ACTIVE:
         case FeedbackMessage::ID_STREAMING_CONNECTED:
-            m_isStreaming = true;
-            updateBridgeStatus("Streaming active");
-            Logger::info("Entertainment streaming is now active");
-            applyFullEffect(); // Apply idle effect immediatly
+            confirmStreaming();
             break;
-
         case FeedbackMessage::ID_STREAMING_DISCONNECTED:
-            m_isStreaming = false;
-            updateBridgeStatus("Streaming disconnected");
+        case FeedbackMessage::ID_BRIDGE_DISCONNECTED:
+            m_connectionState->disconnected();
             Logger::info("Entertainment streaming disconnected");
+            break;
+        case FeedbackMessage::ID_DONE_ABORTED:
+            m_connectionState->cancel();
+            break;
+        case FeedbackMessage::ID_DONE_RESET:
+            break;
+        case FeedbackMessage::ID_USERPROCEDURE_FINISHED:
+            if (requestType == FeedbackMessage::REQUEST_TYPE_RESET_ALL
+                && m_connectionState->hueState() == HueConnectionState::Resetting) {
+                m_connectionState->finishReset();
+            }
+            break;
+        case FeedbackMessage::ID_FINISH_SEARCHING_NO_BRIDGES_FOUND:
+        case FeedbackMessage::ID_DONE_NO_BRIDGE_FOUND:
+        case FeedbackMessage::ID_NO_BRIDGE_FOUND:
+        case FeedbackMessage::ID_BRIDGE_NOT_FOUND:
+        case FeedbackMessage::ID_FINISH_SEARCHING_INVALID_BRIDGES_FOUND:
+        case FeedbackMessage::ID_FINISH_AUTHORIZING_FAILED:
+        case FeedbackMessage::ID_FINISH_RETRIEVING_FAILED:
+        case FeedbackMessage::ID_FINISH_SAVING_FAILED:
+        case FeedbackMessage::ID_FINISH_ACTIVATING_FAILED:
+        case FeedbackMessage::ID_INVALID_MODEL:
+        case FeedbackMessage::ID_INVALID_VERSION:
+        case FeedbackMessage::ID_NO_GROUP_AVAILABLE:
+        case FeedbackMessage::ID_BUSY_STREAMING:
+        case FeedbackMessage::ID_CANNOT_RECONNECT_TOO_MANY_REQUEST:
+        case FeedbackMessage::ID_INTERNAL_ERROR:
+            failForMessage(rawMessageId, rawRequestType);
             break;
 
         default:
-            Logger::warning("Unhandled HueStream message ID: " + std::to_string(message.GetId()));
             break;
     }
 }
 
-bool LightDirector::isBridgePaired() const {
-    QSettings settings;
-    return settings.contains("bridge/ip") && settings.contains("bridge/username");
-}
-
-void LightDirector::initializeBridge() {
-    // Enable auto-reconnect for initialization (startup)
-    m_shouldAutoReconnect = true;
-    
+void LightDirector::initializeHue() {
+    m_connectionState->beginInitialization();
     m_hueStream->LoadBridgeInfoAsync();
-
-    if (isBridgePaired()) {
-        updateBridgeStatus("Loading bridge configuration...");
-    }
-    else {
-        updateBridgeStatus("No bridge paired. Search for a bridge to begin setup.");
-    }
 }
 
-void LightDirector::reconnectToBridge() {
-    updateBridgeStatus("Reconnecting with saved bridge...");
+void LightDirector::connectAfterCallback() {
+    // wait to connect untill EDK callback returns
+    QTimer::singleShot(0, this, [this]() {
+        if (!m_shuttingDown) {
+            m_hueStream->ConnectBridgeAsync();
+        }
+    });
+}
+
+void LightDirector::connectHue() {
+    m_connectionState->beginConnect(false);
     m_hueStream->ConnectBridgeAsync();
 }
 
-void LightDirector::searchForBridge() {
-    m_shouldAutoReconnect = false;
-    
-    updateBridgeStatus("Searching for bridges...");
-    m_hueStream->ConnectBridgeBackgroundAsync();
+void LightDirector::cancelHueConnection() {
+    m_hueStream->AbortConnectingAsync();
+    m_connectionState->cancel();
 }
 
-void LightDirector::connectToBridge() {
-    if (!m_bridgeFound)
+void LightDirector::retryHueConnection() {
+    switch (m_connectionState->retryAction()) {
+        case HueConnectionState::RetrySelection:
+            if (!m_connectionState->pendingAreaId().empty()) {
+                selectEntertainmentArea(m_connectionState->pendingAreaId());
+                return;
+            }
+            refreshEntertainmentAreas();
+            m_connectionState->requireAreaSelection();
+            return;
+        case HueConnectionState::RetryReset:
+            resetAllHueData();
+            return;
+        case HueConnectionState::RetryReconnect:
+            m_connectionState->beginConnect(true);
+            m_hueStream->ConnectBridgeAsync();
+            return;
+        case HueConnectionState::RetryConnect:
+        case HueConnectionState::RetryNone:
+            connectHue();
+            return;
+    }
+}
+
+void LightDirector::selectEntertainmentArea(const std::string &id) {
+    if (m_connectionState->hueState() == HueConnectionState::Streaming
+        && m_connectionState->currentAreaId() == id) {
         return;
+    }
 
-    updateBridgeStatus("Press the link button on your Hue bridge...");
-
-    m_hueStream->ConnectBridgeAsync();
+    auto groups = m_hueStream->GetLoadedBridgeGroups();
+    if (!groups) {
+        m_connectionState->fail("Entertainment Areas could not be loaded.",
+                                HueConnectionState::RetryReconnect);
+        return;
+    }
+    for (const auto &group : *groups) {
+        if (group->GetId() == id) {
+            m_connectionState->beginAreaSelection(id);
+            m_hueStream->SelectGroupAsync(group);
+            return;
+        }
+    }
+    m_connectionState->fail("Entertainment Area no longer available.",
+                            HueConnectionState::RetryReconnect);
 }
 
-void LightDirector::resetBridgePairing() {
-    QSettings settings;
-    settings.remove("bridge/ip");
-    settings.remove("bridge/username");
-    m_hueStream->ResetBridgeInfoAsync();
-
-    m_bridgeFound = false;
-    emit bridgeFoundChanged(false);
-    updateBridgeStatus("Bridge pairing reset");
+void LightDirector::resetAllHueData() {
+    m_connectionState->beginReset();
+    m_hueStream->ResetAllPersistentDataAsync();
 }
 
-void LightDirector::updateBridgeStatus(const QString &status) {
-    Logger::info(status.toStdString());
-    m_bridgeStatus = status;
-    emit bridgeStatusChanged(status);
-}
-
-QStringList LightDirector::getAvailableAreas() const {
-    return m_availableAreas;
-}
-
-void LightDirector::selectArea(const QString &areaName) {
+void LightDirector::refreshEntertainmentAreas() {
+    EntertainmentAreas areas;
     auto groups = m_hueStream->GetLoadedBridgeGroups();
     if (groups) {
         for (const auto &group : *groups) {
-            if (QString::fromStdString(group->GetName()) == areaName) {
-                m_hueStream->SelectGroupAsync(group);
-                m_currentArea = areaName;
-                emit areaSelected(areaName);
-                updateBridgeStatus("Selected entertainment area: " + areaName);
-                break;
-            }
+            areas.push_back({group->GetId(), group->GetName()});
         }
     }
+    m_connectionState->updateAreas(areas);
 }
 
-QString LightDirector::getCurrentArea() const {
-    return m_currentArea;
+void LightDirector::confirmStreaming() {
+    refreshEntertainmentAreas();
+    const std::string areaId = selectedAreaId();
+    const bool alreadyStreaming = m_connectionState->hueState() == HueConnectionState::Streaming
+        && m_connectionState->currentAreaId() == areaId;
+    m_connectionState->confirmStreaming(areaId, selectedAreaName());
+    if (alreadyStreaming) {
+        return;
+    }
+    Logger::info("Streaming now active");
+    applyFullEffect();
 }
 
-bool LightDirector::hasAvailableAreas() const {
-    return !m_availableAreas.isEmpty();
+std::string LightDirector::selectedAreaId() const {
+    auto bridge = m_hueStream->GetLoadedBridge();
+    auto group = bridge ? bridge->GetGroup() : nullptr;
+    return group ? group->GetId() : std::string();
+}
+
+std::string LightDirector::selectedAreaName() const {
+    auto bridge = m_hueStream->GetLoadedBridge();
+    auto group = bridge ? bridge->GetGroup() : nullptr;
+    return group ? group->GetName() : "Hue Entertainment Area";
+}
+
+void LightDirector::failForMessage(int rawMessageId, int rawRequestType) {
+    using Message = huestream::FeedbackMessage;
+    const auto id = static_cast<Message::Id>(rawMessageId);
+    const auto requestType = static_cast<Message::RequestType>(rawRequestType);
+    if (requestType == Message::REQUEST_TYPE_RESET_ALL) {
+        m_connectionState->fail("Unpairing failed.",
+                                HueConnectionState::RetryReset);
+        return;
+    }
+    std::string text;
+    auto retry = HueConnectionState::RetryConnect;
+    switch (id) {
+        case Message::ID_FINISH_SEARCHING_NO_BRIDGES_FOUND:
+        case Message::ID_DONE_NO_BRIDGE_FOUND:
+        case Message::ID_NO_BRIDGE_FOUND:
+            text = "No Hue bridge found.";
+            break;
+        case Message::ID_BRIDGE_NOT_FOUND:
+        case Message::ID_CANNOT_RECONNECT_TOO_MANY_REQUEST:
+            text = "Cannot connect to previous bridge.";
+            retry = HueConnectionState::RetryReconnect;
+            break;
+        case Message::ID_FINISH_AUTHORIZING_FAILED:
+            text = "Bridge authorization failed.";
+            break;
+        case Message::ID_INVALID_MODEL:
+            text = "Unsupported Hue bridge.";
+            break;
+        case Message::ID_INVALID_VERSION:
+            text = "Outdated Hue bridge.";
+            break;
+        case Message::ID_NO_GROUP_AVAILABLE:
+            m_connectionState->updateAreas({});
+            m_connectionState->requireAreaSelection();
+            return;
+        case Message::ID_BUSY_STREAMING:
+            text = "Entertainment Area already in use by another application. Close it and try again.";
+            retry = HueConnectionState::RetryReconnect;
+            break;
+        case Message::ID_FINISH_RETRIEVING_FAILED:
+            text = "Bridge config retrieval failed.";
+            retry = HueConnectionState::RetryReconnect;
+            break;
+        case Message::ID_FINISH_SAVING_FAILED:
+            text = "Unable to save Hue bridge setup.";
+            retry = HueConnectionState::RetryReconnect;
+            break;
+        case Message::ID_FINISH_ACTIVATING_FAILED:
+            text = "Entertainment Area could not be activated.";
+            retry = HueConnectionState::RetryReconnect;
+            break;
+        default:
+            text = "Internal Hue error.";
+            retry = HueConnectionState::RetryReconnect;
+            break;
+    }
+    if (requestType == Message::REQUEST_TYPE_SELECT && (id == Message::ID_FINISH_RETRIEVING_FAILED || id == Message::ID_FINISH_SAVING_FAILED || id == Message::ID_FINISH_ACTIVATING_FAILED || id == Message::ID_BUSY_STREAMING)) {
+        retry = HueConnectionState::RetrySelection;
+    }
+    m_connectionState->fail(text, retry);
 }
 
 LightDirector::LightingFX LightDirector::stringToLightingFX(const std::string &effectName) {
@@ -652,7 +758,7 @@ LightDirector::LightingData LightDirector::applyPostProcessing(const LightingDat
 
 // Super basic atm, all lights will share the same color
 void LightDirector::applyToHueLights(const LightingData &finalLighting) {
-    if (!m_isStreaming || !m_hueStream) {
+    if (!m_hueStream || m_connectionState->hueState() != HueConnectionState::Streaming) {
         return;
     }
     
@@ -700,9 +806,10 @@ void LightDirector::onEffectChanged(const std::string &effectName, const VenueDa
 }
 
 void LightDirector::shutdown() {
-    if (m_hueStream && m_isStreaming) {
+    if (m_hueStream && !m_shuttingDown) {
+        m_shuttingDown = true;
+        m_hueStream->RegisterFeedbackCallback({});
         m_hueStream->ShutDown();
-        m_isStreaming = false;
-        Logger::info("LightDirector: Streaming connection closed");
+        Logger::info("LightDirector: Hue connection closed.");
     }
 }

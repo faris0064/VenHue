@@ -1,4 +1,5 @@
 #include "include/controller.h"
+#include "include/hue_connection_state.h"
 #include "include/logger.h"
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -12,7 +13,12 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setOrganizationName("VenHue");
     QCoreApplication::setApplicationName("VenHue");
 
+    qmlRegisterUncreatableType<HueConnectionState>("VenHue", 1, 0, "HueConnectionState",
+                                                   "HueConnectionState is exposed by Controller");
+
     QQmlApplicationEngine engine;
+    Controller controller;
+    engine.rootContext()->setContextProperty("controller", &controller);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
@@ -21,9 +27,7 @@ int main(int argc, char *argv[]) {
         Qt::QueuedConnection);
     engine.loadFromModule("VenHue", "Main");
 
-    Controller controller;
-    engine.rootContext()->setContextProperty("controller", &controller);
-
+    QTimer::singleShot(0, &controller, &Controller::initializeHue);
     QTimer::singleShot(0, &controller, SLOT(startCueMonitor()));
     Logger::clear();
 

@@ -1,6 +1,8 @@
 #pragma once
+#include "hue_connection_state.h"
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 
 class LightDirector;
 class VenueMonitor;
@@ -11,12 +13,14 @@ class Controller : public QObject {
     Q_OBJECT
 
     Q_PROPERTY(QString currentEffect READ currentEffect NOTIFY currentEffectChanged)
-    Q_PROPERTY(QString bridgeStatus READ bridgeStatus NOTIFY bridgeStatusChanged)
-    Q_PROPERTY(bool bridgeFound READ bridgeFound NOTIFY bridgeFoundChanged)
     Q_PROPERTY(QString usrdirPathStatus READ usrdirPathStatus NOTIFY usrdirPathStatusChanged)
     Q_PROPERTY(bool isUsrdirPathValid READ isUsrdirPathValid NOTIFY usrdirPathValidChanged)
-    Q_PROPERTY(bool hasAvailableAreas READ hasAvailableAreas NOTIFY areasAvailableChanged)
-    Q_PROPERTY(QString currentArea READ currentArea NOTIFY areaSelected)
+    Q_PROPERTY(bool baseOnboardingComplete READ baseOnboardingComplete NOTIFY baseOnboardingCompleteChanged)
+    Q_PROPERTY(HueConnectionState::HueState hueState READ hueState NOTIFY hueStateChanged)
+    Q_PROPERTY(QString hueStatusText READ hueStatusText NOTIFY hueStatusTextChanged)
+    Q_PROPERTY(QVariantList entertainmentAreas READ entertainmentAreas NOTIFY entertainmentAreasChanged)
+    Q_PROPERTY(QString currentAreaId READ currentAreaId NOTIFY currentAreaChanged)
+    Q_PROPERTY(QString currentAreaName READ currentAreaName NOTIFY currentAreaChanged)
 
 public:
     explicit Controller(QObject *parent = nullptr);
@@ -24,22 +28,22 @@ public:
 
     // Getters
     QString currentEffect() const;
-    QString bridgeStatus() const;
-    bool bridgeFound() const;
     QString usrdirPathStatus() const;
     bool isUsrdirPathValid() const;
-    bool hasAvailableAreas() const;
-    QString currentArea() const;
+    bool baseOnboardingComplete() const;
+    HueConnectionState::HueState hueState() const;
+    QString hueStatusText() const;
+    QVariantList entertainmentAreas() const;
+    QString currentAreaId() const;
+    QString currentAreaName() const;
 
     // LightDirector
-    Q_INVOKABLE bool isBridgePaired() const;
-    Q_INVOKABLE bool isStreaming() const;
-    Q_INVOKABLE void searchForBridge();
-    Q_INVOKABLE void connectToBridge();
-    Q_INVOKABLE void resetBridgePairing();
-
-    Q_INVOKABLE QStringList getAvailableAreas() const;
-    Q_INVOKABLE void selectArea(const QString &areaName);
+    Q_INVOKABLE void initializeHue();
+    Q_INVOKABLE void connectHue();
+    Q_INVOKABLE void cancelHueConnection();
+    Q_INVOKABLE void retryHueConnection();
+    Q_INVOKABLE void selectEntertainmentArea(const QString &id);
+    Q_INVOKABLE void resetAllHueData();
 
     // ConfigurationManager
     Q_INVOKABLE QString getUsrdirPath() const;
@@ -55,13 +59,13 @@ public slots:
 
 signals:
     void currentEffectChanged();
-    void bridgeStatusChanged();
-    void bridgeFoundChanged();
-    void bridgePaired();
     void usrdirPathStatusChanged();
     void usrdirPathValidChanged();
-    void areasAvailableChanged();
-    void areaSelected();
+    void baseOnboardingCompleteChanged();
+    void hueStateChanged();
+    void hueStatusTextChanged();
+    void entertainmentAreasChanged();
+    void currentAreaChanged();
 
 private:
     void setupConnections();
