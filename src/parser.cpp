@@ -31,6 +31,9 @@ VenueData Parser::parseDataFile(const std::string &filename) {
 
     std::string rawLine;
     while (std::getline(file, rawLine)) {
+        if (!rawLine.empty() && rawLine.back() == '\r') {
+            rawLine.pop_back();
+        }
         std::string line = stripQuotes(rawLine);
         size_t delim = line.find("|");
         if (delim == std::string::npos) {
