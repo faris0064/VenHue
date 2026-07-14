@@ -12,6 +12,8 @@ Controller::Controller(QObject *parent)
     configManager = new ConfigurationManager(this);
 
     setupConnections();
+    venueMonitor->setSongStatusPath(configManager->getSongStatusPath());
+    venueMonitor->setLightingFilePath(configManager->getLightingFilePath());
 }
 
 Controller::~Controller() {
