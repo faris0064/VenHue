@@ -26,14 +26,6 @@ QString Controller::currentEffect() const {
     return venueMonitor->getCurrentEffect();
 }
 
-QString Controller::bridgeStatus() const {
-    return lightDirector->bridgeStatus();
-}
-
-bool Controller::bridgeFound() const {
-    return lightDirector->bridgeFound();
-}
-
 QString Controller::usrdirPathStatus() const {
     return configManager->getUsrdirPathStatus();
 }
@@ -42,12 +34,59 @@ bool Controller::isUsrdirPathValid() const {
     return configManager->isUsrdirPathValid();
 }
 
-bool Controller::hasAvailableAreas() const {
-    return lightDirector->hasAvailableAreas();
+bool Controller::baseOnboardingComplete() const {
+    return configManager->isUsrdirPathValid() && !configManager->getPlatform().isEmpty();
 }
 
-QString Controller::currentArea() const {
-    return lightDirector->getCurrentArea();
+HueConnectionState::HueState Controller::hueState() const {
+    return lightDirector->connectionState()->hueState();
+}
+
+QString Controller::hueStatusText() const {
+    return QString::fromStdString(lightDirector->connectionState()->hueStatusText());
+}
+
+QVariantList Controller::entertainmentAreas() const {
+    QVariantList areas;
+    for (const auto &area : lightDirector->connectionState()->entertainmentAreas()) {
+        QVariantMap value;
+        value.insert(QStringLiteral("id"), QString::fromStdString(area.id));
+        value.insert(QStringLiteral("name"), QString::fromStdString(area.name));
+        areas.append(value);
+    }
+    return areas;
+}
+
+QString Controller::currentAreaId() const {
+    return QString::fromStdString(lightDirector->connectionState()->currentAreaId());
+}
+
+QString Controller::currentAreaName() const {
+    return QString::fromStdString(lightDirector->connectionState()->currentAreaName());
+}
+
+void Controller::initializeHue() {
+    lightDirector->initializeHue();
+}
+
+void Controller::connectHue() {
+    lightDirector->connectHue();
+}
+
+void Controller::cancelHueConnection() {
+    lightDirector->cancelHueConnection();
+}
+
+void Controller::retryHueConnection() {
+    lightDirector->retryHueConnection();
+}
+
+void Controller::selectEntertainmentArea(const QString &id) {
+    lightDirector->selectEntertainmentArea(id.toStdString());
+}
+
+void Controller::resetAllHueData() {
+    lightDirector->resetAllHueData();
 }
 
 QString Controller::getUsrdirPath() const {
@@ -67,35 +106,11 @@ QString Controller::getPlatform() const {
 }
 
 void Controller::setPlatform(const QString &platform) {
+    const bool wasComplete = baseOnboardingComplete();
     configManager->setPlatform(platform);
-}
-
-bool Controller::isBridgePaired() const {
-    return lightDirector->isBridgePaired();
-}
-
-bool Controller::isStreaming() const {
-    return lightDirector->isStreaming();
-}
-
-void Controller::searchForBridge() {
-    lightDirector->searchForBridge();
-}
-
-void Controller::connectToBridge() {
-    lightDirector->connectToBridge();
-}
-
-void Controller::resetBridgePairing() {
-    lightDirector->resetBridgePairing();
-}
-
-QStringList Controller::getAvailableAreas() const {
-    return lightDirector->getAvailableAreas();
-}
-
-void Controller::selectArea(const QString &areaName) {
-    lightDirector->selectArea(areaName);
+    if (wasComplete != baseOnboardingComplete()) {
+        emit baseOnboardingCompleteChanged();
+    }
 }
 
 void Controller::startCueMonitor() {
@@ -110,22 +125,24 @@ void Controller::setupConnections() {
             lightDirector, &LightDirector::onEffectChanged);
 
     // LightDirector signals 
-    connect(lightDirector, &LightDirector::bridgeStatusChanged,
-            this, &Controller::bridgeStatusChanged);
-    connect(lightDirector, &LightDirector::bridgeFoundChanged,
-            this, &Controller::bridgeFoundChanged);
-    connect(lightDirector, &LightDirector::bridgePaired,
-            this, &Controller::bridgePaired);
-    connect(lightDirector, &LightDirector::areasAvailableChanged,
-            this, &Controller::areasAvailableChanged);
-    connect(lightDirector, &LightDirector::areaSelected,
-            this, &Controller::areaSelected);
+    auto state = lightDirector->connectionState();
+    connect(state, &HueConnectionState::hueStateChanged,
+            this, &Controller::hueStateChanged);
+    connect(state, &HueConnectionState::hueStatusTextChanged,
+            this, &Controller::hueStatusTextChanged);
+    connect(state, &HueConnectionState::entertainmentAreasChanged,
+            this, &Controller::entertainmentAreasChanged);
+    connect(state, &HueConnectionState::currentAreaChanged,
+            this, &Controller::currentAreaChanged);
 
     // ConfigurationManager signals
     connect(configManager, &ConfigurationManager::usrdirPathStatusChanged,
             this, &Controller::usrdirPathStatusChanged);
     connect(configManager, &ConfigurationManager::usrdirPathValidChanged,
-            this, &Controller::usrdirPathValidChanged);
+            this, [this](bool) {
+                emit usrdirPathValidChanged();
+                emit baseOnboardingCompleteChanged();
+            });
     connect(configManager, &ConfigurationManager::pathsUpdated,
             [this](const std::string &songStatusPath, const std::string &lightingFilePath) {
                 venueMonitor->setSongStatusPath(songStatusPath);

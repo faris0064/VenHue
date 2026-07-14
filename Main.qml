@@ -40,8 +40,6 @@ ApplicationWindow {
     
     color: colors.background
     
-    // Keep track of whether onboarding is complete
-    property bool onboardingComplete: false
     property string selectedPlatform: ""
     
     // Load saved settings on startup
@@ -50,10 +48,58 @@ ApplicationWindow {
         if (savedPlatform !== "") {
             selectedPlatform = savedPlatform;
         }
-        
-        if (controller.isBridgePaired()) {
-            onboardingComplete = true;
+    }
+
+    function hueIsActive(state) {
+        return state === HueConnectionState.Initializing
+            || state === HueConnectionState.Searching
+            || state === HueConnectionState.AwaitingLink
+            || state === HueConnectionState.LoadingBridge
+            || state === HueConnectionState.ConnectingArea
+            || state === HueConnectionState.Reconnecting
+            || state === HueConnectionState.Resetting
+    }
+
+    function hueCanSkip(state) {
+        return state === HueConnectionState.Unconfigured
+            || state === HueConnectionState.Error
+            || state === HueConnectionState.NoAreas
+            || state === HueConnectionState.Disconnected
+    }
+
+    function hueCanCancel(state) {
+        return state === HueConnectionState.Searching
+            || state === HueConnectionState.AwaitingLink
+            || state === HueConnectionState.LoadingBridge
+            || state === HueConnectionState.ConnectingArea
+            || state === HueConnectionState.Reconnecting
+    }
+
+    function hueNeedsAction(state) {
+        return state === HueConnectionState.Unconfigured
+            || state === HueConnectionState.NoAreas
+            || state === HueConnectionState.Error
+            || state === HueConnectionState.Disconnected
+            || state === HueConnectionState.SelectingArea
+    }
+
+    function hueBadgeText(state) {
+        if (state === HueConnectionState.Streaming)
+            return "Streaming Active"
+        if (state === HueConnectionState.Disconnected)
+            return "Disconnected"
+        if (hueIsActive(state))
+            return state === HueConnectionState.Reconnecting ? "Reconnecting" : "Connecting"
+        return "Setup Required"
+    }
+
+    function areaIndexFor(id) {
+        var areas = controller.entertainmentAreas
+        for (var i = 0; i < areas.length; ++i) {
+            if (areas[i].id === id)
+                return i
         }
+        return -1
     }
     
     // Custom styled button component
@@ -113,7 +159,7 @@ ApplicationWindow {
     StackView {
         id: stackView
         anchors.fill: parent
-        initialItem: onboardingComplete ? mainPage : welcomePage
+        initialItem: controller.baseOnboardingComplete ? mainPage : welcomePage
         
         // Slide transitions
         pushEnter: Transition {
@@ -404,7 +450,7 @@ ApplicationWindow {
                     primary: true
                     Layout.alignment: Qt.AlignHCenter
                     enabled: controller.isUsrdirPathValid
-                    onClicked: stackView.push(bridgePairingPage)
+                    onClicked: stackView.push(huePairingPage, { firstTimeSetup: true })
                 }
                 
                 StyledButton {
@@ -418,18 +464,45 @@ ApplicationWindow {
     
     // Bridge Pairing Page
     Component {
-        id: bridgePairingPage
-        
+        id: huePairingPage
+
         Rectangle {
+            id: pairingRoot
             width: stackView.width
             height: stackView.height
             color: colors.background
-            
+
+            property bool firstTimeSetup: false
+
+            readonly property int hueState: controller.hueState
+            readonly property bool hasAreas: controller.entertainmentAreas.length > 0
+            readonly property bool showAreaPicker:
+                hueState === HueConnectionState.SelectingArea
+                || ((hueState === HueConnectionState.ConnectingArea
+                     || hueState === HueConnectionState.Streaming) && hasAreas)
+
+            function leaveToMain() {
+                if (firstTimeSetup)
+                    stackView.replace(mainPage)
+                else
+                    stackView.pop()
+            }
+
+            Component.onCompleted: {
+                if (firstTimeSetup && hueState === HueConnectionState.Streaming)
+                    pairingRoot.leaveToMain()
+            }
+
+            onHueStateChanged: {
+                if (firstTimeSetup && hueState === HueConnectionState.Streaming)
+                    pairingRoot.leaveToMain()
+            }
+
             ColumnLayout {
                 anchors.centerIn: parent
                 width: parent.width * 0.85
-                spacing: 30
-                
+                spacing: 24
+
                 // Hue bridge icon
                 Rectangle {
                     Layout.preferredWidth: 64
@@ -437,183 +510,237 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignHCenter
                     radius: 32
                     color: colors.cardBackground
-                    
+
                     Label {
                         anchors.centerIn: parent
                         text: "🔌"
                         font.pixelSize: 32
                     }
                 }
-                
+
                 Label {
-                    text: "Connect to Hue Bridge"
+                    text: pairingRoot.showAreaPicker ? "Entertainment Area" : "Connect to Hue Bridge"
                     font.pixelSize: 28
                     font.weight: Font.Bold
                     color: colors.textPrimary
                     Layout.alignment: Qt.AlignHCenter
                 }
-                
-                Label {
-                    text: "We need to connect to your Hue Bridge\nto control your lights"
-                    font.pixelSize: 16
-                    color: colors.textSecondary
-                    Layout.alignment: Qt.AlignHCenter
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                
+
                 // Status display
                 Card {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 60
-                    
-                    Label {
-                        anchors.centerIn: parent
-                        text: controller.bridgeStatus
-                        font.pixelSize: 15
-                        color: colors.textPrimary
+                    Layout.preferredHeight: 84
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 14
+
+                        BusyIndicator {
+                            id: hueBusy
+                            running: window.hueIsActive(pairingRoot.hueState)
+                            visible: running
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                        }
+
+                        Label {
+                            text: controller.hueStatusText
+                            font.pixelSize: 15
+                            color: colors.textPrimary
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
                     }
                 }
-                
-                StyledButton {
-                    text: "Search for Bridge"
-                    Layout.alignment: Qt.AlignHCenter
-                    onClicked: controller.searchForBridge()
+                Label {
+                    text: "Press the link button on your Hue Bridge."
+                    font.pixelSize: 14
+                    color: colors.textSecondary
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    visible: pairingRoot.hueState === HueConnectionState.AwaitingLink
                 }
-                
-                StyledButton {
-                    text: "Connect"
-                    primary: true
-                    Layout.alignment: Qt.AlignHCenter
-                    enabled: controller.bridgeFound
-                    onClicked: controller.connectToBridge()
-                }
-                
+
                 // Entertainment Area Selection
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 15
-                    visible: controller.hasAvailableAreas
-                    
-                    // Update the model when this becomes visible
-                    onVisibleChanged: {
-                        if (visible) {
-                            areaSelector.model = controller.getAvailableAreas()
-                        }
-                    }
-                    
+                    spacing: 12
+                    visible: pairingRoot.showAreaPicker
+
                     Label {
-                        text: "Select Entertainment Area"
-                        font.pixelSize: 16
-                        color: colors.textPrimary
-                        Layout.alignment: Qt.AlignHCenter
+                        text: "Select an entertainment area to use"
+                        font.pixelSize: 14
+                        color: colors.textSecondary
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
                     }
-                    
+
                     ComboBox {
-                        id: areaSelector
+                        id: areaCombo
                         Layout.fillWidth: true
                         Layout.preferredHeight: 50
-                        model: []
-                        
+                        model: controller.entertainmentAreas
+                        textRole: "name"
+
                         delegate: ItemDelegate {
-                            width: areaSelector.width
+                            required property var modelData
+                            required property int index
+                            width: areaCombo.width
                             contentItem: Text {
-                                text: modelData
+                                text: modelData.name
                                 color: colors.textPrimary
-                                font: areaSelector.font
+                                font: areaCombo.font
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            highlighted: areaSelector.highlightedIndex === index
+                            highlighted: areaCombo.highlightedIndex === index
                             background: Rectangle {
                                 color: highlighted ? colors.cardBorder : colors.cardBackground
                             }
                         }
-                        
-                        onActivated: {
-                            controller.selectArea(currentText)
+
+                        onActivated: function(index) {
+                            var area = controller.entertainmentAreas[index]
+                            if (area)
+                                controller.selectEntertainmentArea(area.id)
                         }
                     }
-                    
-                    StyledButton {
-                        text: "Continue"
-                        primary: true
-                        Layout.alignment: Qt.AlignHCenter
-                        enabled: controller.currentArea !== ""
-                        onClicked: stackView.push(mainPage)
+                    Binding {
+                        target: areaCombo
+                        property: "currentIndex"
+                        value: window.areaIndexFor(controller.currentAreaId)
                     }
                 }
-                
+
+                Item { Layout.preferredHeight: 4 }
+                StyledButton {
+                    text: "Connect"
+                    primary: true
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: pairingRoot.hueState === HueConnectionState.Unconfigured
+                    onClicked: controller.connectHue()
+                }
+                StyledButton {
+                    id: retryButton
+                    text: pairingRoot.hueState === HueConnectionState.NoAreas ? "Search Again" : "Retry"
+                    primary: true
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: pairingRoot.hueState === HueConnectionState.Error
+                            || pairingRoot.hueState === HueConnectionState.NoAreas
+                            || pairingRoot.hueState === HueConnectionState.Disconnected
+
+                    onClicked: controller.retryHueConnection()
+                }
+                StyledButton {
+                    text: "Cancel"
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: window.hueCanCancel(pairingRoot.hueState)
+                    onClicked: controller.cancelHueConnection()
+                }
+                StyledButton {
+                    text: "Done"
+                    primary: true
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: !pairingRoot.firstTimeSetup
+                            && pairingRoot.hueState === HueConnectionState.Streaming
+                    onClicked: stackView.pop()
+                }
                 StyledButton {
                     text: "Skip for Now"
                     Layout.alignment: Qt.AlignHCenter
-                    onClicked: stackView.push(mainPage)
+                    visible: window.hueCanSkip(pairingRoot.hueState)
+                    onClicked: pairingRoot.leaveToMain()
+                }
+                StyledButton {
+                    text: "Back"
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: pairingRoot.firstTimeSetup
+                            && pairingRoot.hueState === HueConnectionState.Unconfigured
+                    onClicked: stackView.pop()
                 }
             }
         }
     }
-    
+
     // Main Page
     Component {
         id: mainPage
-        
+
         Rectangle {
+            id: mainRoot
             width: stackView.width
             height: stackView.height
             color: colors.background
-            
+
+            readonly property int hueState: controller.hueState
+
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 20
                 spacing: 20
-                
+
                 // Header with connection status
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 15
-                    
+
                     // Connection status badge
                     Rectangle {
+                        id: statusBadge
                         Layout.preferredHeight: 36
                         Layout.fillWidth: true
                         radius: 18
-                        color: controller.isStreaming() ? colors.successBg : colors.errorBg
-                        border.color: controller.isStreaming() ? colors.successBorder : colors.errorBorder
                         border.width: 1
-                        
+                        color: {
+                            if (hueState === HueConnectionState.Streaming) return colors.successBg
+                            if (window.hueIsActive(hueState)) return colors.cardBackground
+                            return colors.errorBg
+                        }
+                        border.color: {
+                            if (hueState === HueConnectionState.Streaming) return colors.successBorder
+                            if (window.hueIsActive(hueState)) return colors.cardBorder
+                            return colors.errorBorder
+                        }
+
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 8
-                            
+
                             Rectangle {
                                 width: 8
                                 height: 8
                                 radius: 4
-                                color: controller.isStreaming() ? colors.success : colors.error
+                                color: {
+                                    return hueState === HueConnectionState.Streaming ? colors.success : colors.error
+                                }
                             }
-                            
+
                             Label {
-                                text: controller.isStreaming() ? "Streaming Active" : "Not Connected"
+                                text: window.hueBadgeText(hueState)
                                 color: colors.textPrimary
                                 font.pixelSize: 13
                             }
                         }
                     }
-                    
+
                     // Settings button
                     Rectangle {
                         Layout.preferredWidth: 90
                         Layout.preferredHeight: 36
                         radius: 18
                         color: colors.accent
-                        
+
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            
+
                             Label {
                                 text: "⚙️"
                                 font.pixelSize: 16
                             }
-                            
+
                             Label {
                                 text: "Settings"
                                 color: colors.textPrimary
@@ -621,7 +748,7 @@ ApplicationWindow {
                                 font.weight: Font.Medium
                             }
                         }
-                        
+
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
@@ -631,28 +758,68 @@ ApplicationWindow {
                         }
                     }
                 }
-                
+
+                Card {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 96
+                    visible: window.hueNeedsAction(hueState)
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 14
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Label {
+                                text: "Hue setup needs attention"
+                                font.pixelSize: 15
+                                font.weight: Font.Bold
+                                color: colors.textPrimary
+                            }
+
+                            Label {
+                                text: controller.hueStatusText
+                                font.pixelSize: 13
+                                color: colors.textSecondary
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        StyledButton {
+                            text: "Finish Hue Setup"
+                            primary: true
+                            Layout.preferredWidth: 150
+                            Layout.preferredHeight: 44
+                            onClicked: stackView.push(huePairingPage, { firstTimeSetup: false })
+                        }
+                    }
+                }
+
                 // Entertainment Area Card
                 Card {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 120
-                    visible: controller.hasAvailableAreas
-                    
+                    visible: controller.currentAreaName !== ""
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 20
                         spacing: 12
-                        
+
                         RowLayout {
                             Layout.fillWidth: true
-                            
+
                             Label {
                                 text: "🎮"
                                 font.pixelSize: 24
                             }
-                            
+
                             Label {
-                                text: controller.currentArea !== "" ? controller.currentArea : "No Area Selected"
+                                text: controller.currentAreaName !== "" ? controller.currentAreaName : "No Area Selected"
                                 font.pixelSize: 18
                                 font.weight: Font.Bold
                                 color: colors.textPrimary
@@ -676,31 +843,31 @@ ApplicationWindow {
                                 }
                             }
                         }
-                        
-                            Label {
-                                text: selectedPlatform + " • " + (controller.isStreaming() ? "Streaming" : "Idle")
-                                font.pixelSize: 13
-                                color: colors.textSecondary
-                            }
+
+                        Label {
+                            text: selectedPlatform + " • " + window.hueBadgeText(hueState)
+                            font.pixelSize: 13
+                            color: colors.textSecondary
+                        }
                     }
                 }
-                
+
                 // Current Effect Display
                 Card {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 100
-                    
+
                     ColumnLayout {
                         anchors.centerIn: parent
                         spacing: 10
-                        
+
                         Label {
                             text: "Current Effect"
                             font.pixelSize: 14
                             color: colors.textSecondary
                             Layout.alignment: Qt.AlignHCenter
                         }
-                        
+
                         Label {
                             text: controller.currentEffect
                             font.pixelSize: 28
@@ -710,12 +877,17 @@ ApplicationWindow {
                         }
                     }
                 }
-                
+
                 Item { Layout.fillHeight: true }
-                
+
                 // Info message
                 Label {
-                    text: controller.isStreaming() ? "Lights are syncing automatically" : "Select an entertainment area to begin"
+                    text: {
+                        if (window.hueIsActive(hueState))
+                            return "Reconnecting to your Hue Bridge…"
+                        return "Finish Hue setup to begin syncing lights"
+                    }
+                    visible: hueState !== HueConnectionState.Streaming
                     font.pixelSize: 14
                     color: colors.textSecondary
                     Layout.alignment: Qt.AlignHCenter
@@ -724,89 +896,119 @@ ApplicationWindow {
             }
         }
     }
-    
+
     // Settings Page
     Component {
         id: settingsPage
-        
+
         Rectangle {
+            id: settingsRoot
             width: stackView.width
             height: stackView.height
             color: colors.background
-            
+
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 20
                 spacing: 20
-                
+
                 // Header
                 RowLayout {
                     Layout.fillWidth: true
-                    
+
                     StyledButton {
                         text: "← Back"
                         Layout.preferredWidth: 100
                         Layout.preferredHeight: 40
                         onClicked: stackView.pop()
                     }
-                    
+
                     Item { Layout.fillWidth: true }
                 }
-                
+
                 Label {
                     text: "Settings"
                     font.pixelSize: 32
                     font.weight: Font.Bold
                     color: colors.textPrimary
                 }
-                
+
                 // Settings sections
                 Card {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 80
-                    
+
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 20
-                        
+
                         Label {
                             text: "🔌"
                             font.pixelSize: 24
                         }
-                        
+
                         Label {
-                            text: "Reconfigure Hue Bridge"
+                            text: "Hue Bridge and Entertainment Area"
                             font.pixelSize: 16
                             color: colors.textPrimary
                             Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                         }
                     }
-                    
+
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            controller.resetBridgePairing()
-                            stackView.push(bridgePairingPage)
-                        }
+                        onClicked: stackView.push(huePairingPage, { firstTimeSetup: false })
                         onPressed: parent.opacity = 0.8
                         onReleased: parent.opacity = 1.0
                     }
                 }
-                
+
                 Card {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 80
-                    
+
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 20
-                        
+
+                        Label {
+                            text: "🔁"
+                            font.pixelSize: 24
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: "Pair a Different Bridge"
+                            font.pixelSize: 16
+                            color: colors.error
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: confirmResetPopup.open()
+                        onPressed: parent.opacity = 0.8
+                        onReleased: parent.opacity = 1.0
+                    }
+                }
+
+                Card {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 80
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+
                         Label {
                             text: "🎮"
                             font.pixelSize: 24
                         }
-                        
+
                         Label {
                             text: "Change Platform"
                             font.pixelSize: 16
@@ -814,7 +1016,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                         }
                     }
-                    
+
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -823,18 +1025,78 @@ ApplicationWindow {
                         onReleased: parent.opacity = 1.0
                     }
                 }
-                
+
                 Item { Layout.fillHeight: true }
             }
-        }
-    }
-    
-    // Connections to handle bridge pairing status changes
-    Connections {
-        target: controller
-        
-        function onBridgePaired() {
-            stackView.push(mainPage)
+
+            Popup {
+                id: confirmResetPopup
+                anchors.centerIn: parent
+                width: Math.min(360, settingsRoot.width - 48)
+                modal: true
+                dim: true
+                padding: 0
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                background: Rectangle {
+                    color: colors.cardBackground
+                    radius: 16
+                    border.color: colors.cardBorder
+                    border.width: 1
+                }
+
+                contentItem: ColumnLayout {
+                    spacing: 18
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 24
+                        Layout.leftMargin: 24
+                        Layout.rightMargin: 24
+                        text: "Pair a Different Bridge?"
+                        font.pixelSize: 20
+                        font.weight: Font.Bold
+                        color: colors.textPrimary
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 24
+                        Layout.rightMargin: 24
+                        text: "This unpairs VenHue from your Hue Bridge and restarts the pairing process."
+                        font.pixelSize: 14
+                        color: colors.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 24
+                        Layout.rightMargin: 24
+                        Layout.bottomMargin: 24
+                        spacing: 12
+
+                        StyledButton {
+                            text: "Cancel"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 44
+                            onClicked: confirmResetPopup.close()
+                        }
+
+                        StyledButton {
+                            text: "Pair Different Bridge"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 44
+                            onClicked: {
+                                confirmResetPopup.close()
+                                controller.resetAllHueData()
+                                stackView.push(huePairingPage, { firstTimeSetup: false })
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

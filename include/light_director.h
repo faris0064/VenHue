@@ -1,8 +1,8 @@
 #pragma once
+#include "hue_connection_state.h"
 #include "parser.h"
 #include <QObject>
 #include <QSettings>
-#include <QString>
 #include <QTimer>
 #include <memory>
 
@@ -82,48 +82,28 @@ public:
 
     explicit LightDirector(QObject *parent = nullptr);
 
-    bool isBridgePaired() const;
-    bool isStreaming() const { return m_isStreaming; }
-    void initializeBridge();
-    void searchForBridge();
-    void connectToBridge();
-    void resetBridgePairing();
+    HueConnectionState *connectionState() const { return m_connectionState; }
+    void initializeHue();
+    void connectHue();
+    void cancelHueConnection();
+    void retryHueConnection();
+    void selectEntertainmentArea(const std::string &id);
+    void resetAllHueData();
     void shutdown();
 
-    QString bridgeStatus() const { return m_bridgeStatus; }
-    bool bridgeFound() const { return m_bridgeFound; }
-
-    Q_INVOKABLE QStringList getAvailableAreas() const;
-    Q_INVOKABLE void selectArea(const QString &areaName);
-    Q_INVOKABLE QString getCurrentArea() const;
-    Q_INVOKABLE bool hasAvailableAreas() const;
-
-signals:
-    void bridgeStatusChanged(const QString &status);
-    void bridgeFoundChanged(bool found);
-    void bridgePaired();
-    void areasAvailable();
-    void areaSelected(const QString &areaName);
-    void areasAvailableChanged(bool available);
-
-
 private:
-    void updateBridgeStatus(const QString &status);
-    void handleHueStreamFeedback(const huestream::FeedbackMessage &message);
-    void reconnectToBridge();
-
-    QString m_bridgeStatus;
-    bool m_bridgeFound;
-    bool m_isStreaming;
-    QString m_bridgeIp;
+    void handleHueStreamFeedback(int messageId, int requestType);
+    void refreshEntertainmentAreas();
+    void connectAfterCallback();
+    void confirmStreaming();
+    void failForMessage(int messageId, int requestType);
+    std::string selectedAreaId() const;
+    std::string selectedAreaName() const;
 
     std::shared_ptr<huestream::Config> m_config;
     std::shared_ptr<huestream::HueStream> m_hueStream;
-
-    QStringList m_availableAreas;
-    QString m_currentArea;
-    
-    bool m_shouldAutoReconnect;
+    HueConnectionState *m_connectionState;
+    bool m_shuttingDown = false;
 
     LightingFX m_currentLightingFX;
     PostFX m_currentPostFX;
