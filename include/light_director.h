@@ -20,8 +20,9 @@ public:
     enum class LightingFX {
         IDLE, // Blue, ambient "night time" lighting
 
+		// Manual lighting presets use keyframe rates or triggers to cycle through their [in-game] colors.
         VERSE, // Tends towarrds soft yet full blends, such as orange and green.
-        CHORUS, // Tends towards stark, dramatic colors, such as saturated blue and red. Invokes a peak state.
+        CHORUS, // Tends towards stark, dramatic colors, such as saturated blue and red. Invokes a peak state. Varies between venues.
         MANUAL_COOL, // Cool temperature lighting
         MANUAL_WARM, // Warm temperature lighting
         DISCHORD, // Harsh lighting with a blend of dissonant colors (Yellow, blue, red?)
