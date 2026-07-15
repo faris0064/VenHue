@@ -107,6 +107,7 @@ qt_add_qml_module(appVenHue
     QML_FILES
         Main.qml
     SOURCES
+        src/animated_light_effect.cpp
         src/controller.cpp
         src/hue_connection_state.cpp
         src/light_director.cpp
@@ -114,6 +115,7 @@ qt_add_qml_module(appVenHue
         src/configuration_manager.cpp
         src/logger.cpp
         src/parser.cpp
+        include/animated_light_effect.h
         include/controller.h
         include/hue_connection_state.h
         include/light_director.h

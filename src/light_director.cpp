@@ -1,4 +1,5 @@
 #include "light_director.h"
+#include "animated_light_effect.h"
 #include <QHostInfo>
 #include <QMetaObject>
 #include <QTimer>
@@ -7,6 +8,46 @@
 #include <huestream/common/data/Area.h>
 #include <huestream/common/data/Color.h>
 #include <logger.h>
+
+namespace {
+
+constexpr AnimatedEffectDefinition LOOP_COOL_EFFECT{
+    {{{0.00, 0.80, 1.00}, {0.05, 0.35, 1.00}, {0.00, 0.85, 0.65}, {0.35, 0.75, 1.00}}},
+    0.8,
+    std::chrono::milliseconds(2500),
+    std::chrono::milliseconds(250),
+    0.15,
+    TransitionMode::Fade,
+    TransitionCurve::EaseInOutSine};
+
+constexpr AnimatedEffectDefinition HARMONY_EFFECT{
+    {{{1.00, 0.40, 0.00}, {1.00, 0.70, 0.10}, {0.55, 0.00, 1.00}, {0.80, 0.10, 1.00}}},
+    1.0,
+    std::chrono::milliseconds(4000),
+    std::chrono::milliseconds(250),
+    0.15,
+    TransitionMode::Fade,
+    TransitionCurve::EaseInOutSine};
+
+constexpr AnimatedEffectDefinition FRENZY_EFFECT{
+    {{{0.00, 0.25, 1.00}, {0.00, 1.00, 0.15}, {0.65, 0.00, 1.00}, {1.00, 0.85, 0.00}}},
+    1.0,
+    std::chrono::milliseconds(450),
+    std::chrono::milliseconds(100),
+    0.15,
+    TransitionMode::Fade,
+    TransitionCurve::Linear};
+
+constexpr AnimatedEffectDefinition BRE_EFFECT{
+    FRENZY_EFFECT.palette,
+    1.0,
+    std::chrono::milliseconds(200),
+    std::chrono::milliseconds(100),
+    0.15,
+    TransitionMode::Fade,
+    TransitionCurve::Linear};
+
+} // namespace
 
 LightDirector::LightDirector(QObject *parent)
     : QObject(parent), m_connectionState(new HueConnectionState(this)), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
@@ -767,11 +808,7 @@ void LightDirector::applyToHueLights(const LightingData &finalLighting) {
     auto color = huestream::Color(finalLighting.red, finalLighting.green, finalLighting.blue);
     effect->SetFixedColor(color);
     effect->SetFixedOpacity(finalLighting.brightness);
-    effect->Enable();
-    
-    m_hueStream->LockMixer();
-    m_hueStream->AddEffect(effect);
-    m_hueStream->UnlockMixer();
+    replaceActiveEffect(effect);
     
     Logger::info("Applied lighting: R=" + std::to_string(finalLighting.red) + 
                  " G=" + std::to_string(finalLighting.green) + 
@@ -779,8 +816,56 @@ void LightDirector::applyToHueLights(const LightingData &finalLighting) {
                  " Brightness=" + std::to_string(finalLighting.brightness));
 }
 
+void LightDirector::replaceActiveEffect(const huestream::EffectPtr &effect) {
+    m_hueStream->LockMixer();
+    if (m_activeEffect) {
+        m_activeEffect->Finish();
+    }
+    m_hueStream->AddEffect(effect);
+    effect->Enable();
+    m_activeEffect = effect;
+    m_hueStream->UnlockMixer();
+}
+
+void LightDirector::applyAnimatedEffect(LightingFX fx) {
+    if (!m_hueStream || m_connectionState->hueState() != HueConnectionState::Streaming) {
+        return;
+    }
+
+    const AnimatedEffectDefinition *definition = nullptr;
+    switch (fx) {
+        case LightingFX::LOOP_COOL:
+            definition = &LOOP_COOL_EFFECT;
+            break;
+        case LightingFX::HARMONY:
+            definition = &HARMONY_EFFECT;
+            break;
+        case LightingFX::FRENZY:
+            definition = &FRENZY_EFFECT;
+            break;
+        case LightingFX::BRE:
+            definition = &BRE_EFFECT;
+            break;
+        default:
+            return;
+    }
+
+    auto effect = std::make_shared<AnimatedLightEffect>("VenHue", 2, *definition);
+    replaceActiveEffect(effect);
+}
+
 // Generate base lighting from current LightingFX, then apply post-processing from current PostFX, before sending to Hue
 void LightDirector::applyFullEffect() {
+    switch (m_currentLightingFX) {
+        case LightingFX::LOOP_COOL:
+        case LightingFX::HARMONY:
+        case LightingFX::FRENZY:
+        case LightingFX::BRE:
+            applyAnimatedEffect(m_currentLightingFX);
+            return;
+        default:
+            break;
+    }
     LightingData baseLighting = generateBaseLighting(m_currentLightingFX);
     LightingData finalLighting = applyPostProcessing(baseLighting, m_currentPostFX);
     applyToHueLights(finalLighting);
@@ -803,6 +888,13 @@ void LightDirector::updateFromEffectString(const std::string &effectName) {
 void LightDirector::onEffectChanged(const std::string &effectName, const VenueData &data, double currentTime) {
     Logger::info("Effect changed to: " + effectName + " at time: " + std::to_string(currentTime));
     updateFromEffectString(effectName);
+}
+
+void LightDirector::onSongStateChanged(bool isPlaying) {
+    if (!isPlaying) {
+        m_currentLightingFX = LightingFX::IDLE;
+        applyFullEffect();
+    }
 }
 
 void LightDirector::shutdown() {

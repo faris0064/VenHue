@@ -125,6 +125,8 @@ void Controller::setupConnections() {
             this, &Controller::currentEffectChanged);
     connect(venueMonitor, &VenueMonitor::effectChanged,
             lightDirector, &LightDirector::onEffectChanged);
+    connect(venueMonitor, &VenueMonitor::songStateChanged,
+            lightDirector, &LightDirector::onSongStateChanged);
 
     // LightDirector signals 
     auto state = lightDirector->connectionState();

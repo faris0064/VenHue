@@ -43,7 +43,7 @@ void VenueMonitor::onMonitorTimer() {
             lastKnownData = VenueData();
             lastElapsed = -1.0;
         }
-        else {
+        else if (m_currentEffect != "Idle...") {
             m_currentEffect = "Idle...";
             emit currentEffectChanged(m_currentEffect);
             Logger::info("Idle...");
@@ -107,10 +107,11 @@ void VenueMonitor::printActiveEffect(const VenueData &data, double currentTime) 
     std::string activeEffect = parser.findActiveEffect(data, currentTime);
 
     QString newEffect = activeEffect.empty() ? "Idle..." : QString::fromStdString(activeEffect);
-    if (newEffect != m_currentEffect) {
-        m_currentEffect = newEffect;
-        emit currentEffectChanged(m_currentEffect);
+    if (newEffect == m_currentEffect) {
+        return;
     }
+    m_currentEffect = newEffect;
+    emit currentEffectChanged(m_currentEffect);
 
     // For LightDirector
     if (!activeEffect.empty()) {

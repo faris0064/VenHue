@@ -97,11 +97,14 @@ private:
     void connectAfterCallback();
     void confirmStreaming();
     void failForMessage(int messageId, int requestType);
+    void replaceActiveEffect(const huestream::EffectPtr &effect);
+    void applyAnimatedEffect(LightingFX fx);
     std::string selectedAreaId() const;
     std::string selectedAreaName() const;
 
     std::shared_ptr<huestream::Config> m_config;
     std::shared_ptr<huestream::HueStream> m_hueStream;
+    huestream::EffectPtr m_activeEffect;
     HueConnectionState *m_connectionState;
     bool m_shuttingDown = false;
 
@@ -139,4 +142,5 @@ private:
 
 public slots:
     void onEffectChanged(const std::string &effectName, const VenueData &data, double currentTime);
+    void onSongStateChanged(bool isPlaying);
 };
