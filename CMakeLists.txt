@@ -9,7 +9,7 @@ if(NOT MSVC)
     add_compile_options(-Wno-deprecated -Wno-dynamic-exception-spec)
 endif()
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Network Quick Widgets)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network Quick Widgets)
 
 set(VENHUE_EDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/EDK" CACHE PATH
     "Path to the Philips Hue EDK source")
@@ -110,14 +110,17 @@ qt_add_qml_module(appVenHue
         src/animated_light_effect.cpp
         src/controller.cpp
         src/hue_connection_state.cpp
+        src/light_effect_loader.cpp
         src/light_director.cpp
         src/venue_monitor.cpp
         src/configuration_manager.cpp
         src/logger.cpp
         src/parser.cpp
+        include/animated_effect_definition.h
         include/animated_light_effect.h
         include/controller.h
         include/hue_connection_state.h
+        include/light_effect_loader.h
         include/light_director.h
         include/venue_monitor.h
         include/configuration_manager.h
@@ -134,11 +137,21 @@ set_target_properties(appVenHue PROPERTIES
 
 target_include_directories(appVenHue PRIVATE include)
 target_link_libraries(appVenHue PRIVATE
+    Qt6::Core
     Qt6::Network
     Qt6::Quick
     Qt6::Widgets
     VenHueEDK
 )
+
+add_custom_target(copy_light_effects ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/config/light_effects.json"
+        "$<TARGET_FILE_DIR:appVenHue>/light_effects.json"
+    DEPENDS
+        appVenHue
+        "${CMAKE_CURRENT_SOURCE_DIR}/config/light_effects.json"
+    VERBATIM)
 
 include(GNUInstallDirs)
 install(TARGETS appVenHue
@@ -146,3 +159,4 @@ install(TARGETS appVenHue
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+install(FILES config/light_effects.json DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -1,38 +1,12 @@
 #pragma once
 
-#include <array>
-#include <chrono>
+#include "animated_effect_definition.h"
+
 #include <map>
 #include <random>
 #include <string>
 
 #include <huestream/effect/effects/base/Effect.h>
-
-struct RgbColor {
-    double red;
-    double green;
-    double blue;
-};
-
-enum class TransitionMode {
-    Fade,
-    Snap
-};
-
-enum class TransitionCurve {
-    Linear,
-    EaseInOutSine
-};
-
-struct AnimatedEffectDefinition {
-    std::array<RgbColor, 4> palette;
-    double brightness;
-    std::chrono::milliseconds duration;
-    std::chrono::milliseconds entryDuration;
-    double durationJitter;
-    TransitionMode mode;
-    TransitionCurve curve;
-};
 
 class AnimatedLightEffect : public huestream::Effect {
 public:

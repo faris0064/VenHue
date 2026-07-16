@@ -8,6 +8,7 @@
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
+    Logger::clear();
 
     // For QSettings
     QCoreApplication::setOrganizationName("VenHue");
@@ -29,7 +30,5 @@ int main(int argc, char *argv[]) {
 
     QTimer::singleShot(0, &controller, &Controller::initializeHue);
     QTimer::singleShot(0, &controller, SLOT(startCueMonitor()));
-    Logger::clear();
-
     return app.exec();
 }

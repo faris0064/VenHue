@@ -1,8 +1,14 @@
 #include "light_director.h"
 #include "animated_light_effect.h"
+#include "light_effect_loader.h"
 #include <QHostInfo>
 #include <QMetaObject>
 #include <QTimer>
+#include <algorithm>
+#include <array>
+#include <string_view>
+#include <utility>
+#include <vector>
 #include <huestream/HueStream.h>
 #include <huestream/effect/effects/AreaEffect.h>
 #include <huestream/common/data/Area.h>
@@ -11,46 +17,38 @@
 
 namespace {
 
-constexpr AnimatedEffectDefinition LOOP_COOL_EFFECT{
-    {{{0.00, 0.80, 1.00}, {0.05, 0.35, 1.00}, {0.00, 0.85, 0.65}, {0.35, 0.75, 1.00}}},
-    0.8,
-    std::chrono::milliseconds(2500),
-    std::chrono::milliseconds(250),
-    0.15,
-    TransitionMode::Fade,
-    TransitionCurve::EaseInOutSine};
+constexpr std::array ANIMATED_EFFECTS{
+    std::pair{LightDirector::LightingFX::IDLE, std::string_view{"idle"}},
+    std::pair{LightDirector::LightingFX::LOOP_COOL, std::string_view{"loop_cool"}},
+    std::pair{LightDirector::LightingFX::LOOP_WARM, std::string_view{"loop_warm"}},
+    std::pair{LightDirector::LightingFX::HARMONY, std::string_view{"harmony"}},
+    std::pair{LightDirector::LightingFX::FRENZY, std::string_view{"frenzy"}},
+    std::pair{LightDirector::LightingFX::SILHOUETTES, std::string_view{"silhouettes"}},
+    std::pair{LightDirector::LightingFX::SILHOUETTES_SPOT, std::string_view{"silhouettes_spot"}},
+    std::pair{LightDirector::LightingFX::BRE, std::string_view{"bre"}}};
 
-constexpr AnimatedEffectDefinition HARMONY_EFFECT{
-    {{{1.00, 0.40, 0.00}, {1.00, 0.70, 0.10}, {0.55, 0.00, 1.00}, {0.80, 0.10, 1.00}}},
-    1.0,
-    std::chrono::milliseconds(4000),
-    std::chrono::milliseconds(250),
-    0.15,
-    TransitionMode::Fade,
-    TransitionCurve::EaseInOutSine};
+std::map<LightDirector::LightingFX, AnimatedEffectDefinition> loadAnimatedEffects() {
+    std::vector<std::string_view> names;
+    names.reserve(ANIMATED_EFFECTS.size());
+    for (const auto &[fx, name] : ANIMATED_EFFECTS) {
+        names.push_back(name);
+    }
 
-constexpr AnimatedEffectDefinition FRENZY_EFFECT{
-    {{{0.00, 0.25, 1.00}, {0.00, 1.00, 0.15}, {0.65, 0.00, 1.00}, {1.00, 0.85, 0.00}}},
-    1.0,
-    std::chrono::milliseconds(450),
-    std::chrono::milliseconds(100),
-    0.15,
-    TransitionMode::Fade,
-    TransitionCurve::Linear};
-
-constexpr AnimatedEffectDefinition BRE_EFFECT{
-    FRENZY_EFFECT.palette,
-    1.0,
-    std::chrono::milliseconds(200),
-    std::chrono::milliseconds(100),
-    0.15,
-    TransitionMode::Fade,
-    TransitionCurve::Linear};
+    AnimatedEffectDefinitions byName = loadAnimatedEffectDefinitions(names);
+    std::map<LightDirector::LightingFX, AnimatedEffectDefinition> byFx;
+    for (const auto &[fx, name] : ANIMATED_EFFECTS) {
+        const auto definition = byName.find(name);
+        if (definition != byName.end()) {
+            byFx.emplace(fx, std::move(definition->second));
+        }
+    }
+    return byFx;
+}
 
 } // namespace
 
 LightDirector::LightDirector(QObject *parent)
-    : QObject(parent), m_connectionState(new HueConnectionState(this)), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
+    : QObject(parent), m_animatedEffectDefinitions(loadAnimatedEffects()), m_connectionState(new HueConnectionState(this)), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
     // huestream stores the config by itself, don't need to have any QSettings stuff for it anymore
     m_config = std::make_shared<huestream::Config>("VenHue", QHostInfo::localHostName().toStdString(), huestream::PersistenceEncryptionKey("VenHuePersistenceKey"));
     m_hueStream = std::make_shared<huestream::HueStream>(m_config);
@@ -827,44 +825,21 @@ void LightDirector::replaceActiveEffect(const huestream::EffectPtr &effect) {
     m_hueStream->UnlockMixer();
 }
 
-void LightDirector::applyAnimatedEffect(LightingFX fx) {
+void LightDirector::applyAnimatedEffect(const AnimatedEffectDefinition &definition) {
     if (!m_hueStream || m_connectionState->hueState() != HueConnectionState::Streaming) {
         return;
     }
 
-    const AnimatedEffectDefinition *definition = nullptr;
-    switch (fx) {
-        case LightingFX::LOOP_COOL:
-            definition = &LOOP_COOL_EFFECT;
-            break;
-        case LightingFX::HARMONY:
-            definition = &HARMONY_EFFECT;
-            break;
-        case LightingFX::FRENZY:
-            definition = &FRENZY_EFFECT;
-            break;
-        case LightingFX::BRE:
-            definition = &BRE_EFFECT;
-            break;
-        default:
-            return;
-    }
-
-    auto effect = std::make_shared<AnimatedLightEffect>("VenHue", 2, *definition);
+    auto effect = std::make_shared<AnimatedLightEffect>("VenHue", 2, definition);
     replaceActiveEffect(effect);
 }
 
 // Generate base lighting from current LightingFX, then apply post-processing from current PostFX, before sending to Hue
 void LightDirector::applyFullEffect() {
-    switch (m_currentLightingFX) {
-        case LightingFX::LOOP_COOL:
-        case LightingFX::HARMONY:
-        case LightingFX::FRENZY:
-        case LightingFX::BRE:
-            applyAnimatedEffect(m_currentLightingFX);
-            return;
-        default:
-            break;
+    const auto definition = m_animatedEffectDefinitions.find(m_currentLightingFX);
+    if (definition != m_animatedEffectDefinitions.end()) {
+        applyAnimatedEffect(definition->second);
+        return;
     }
     LightingData baseLighting = generateBaseLighting(m_currentLightingFX);
     LightingData finalLighting = applyPostProcessing(baseLighting, m_currentPostFX);

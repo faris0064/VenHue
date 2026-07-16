@@ -1,9 +1,11 @@
 #pragma once
+#include "animated_effect_definition.h"
 #include "hue_connection_state.h"
 #include "parser.h"
 #include <QObject>
 #include <QSettings>
 #include <QTimer>
+#include <map>
 #include <memory>
 
 #include <huestream/HueStream.h>
@@ -99,13 +101,14 @@ private:
     void confirmStreaming();
     void failForMessage(int messageId, int requestType);
     void replaceActiveEffect(const huestream::EffectPtr &effect);
-    void applyAnimatedEffect(LightingFX fx);
+    void applyAnimatedEffect(const AnimatedEffectDefinition &definition);
     std::string selectedAreaId() const;
     std::string selectedAreaName() const;
 
     std::shared_ptr<huestream::Config> m_config;
     std::shared_ptr<huestream::HueStream> m_hueStream;
     huestream::EffectPtr m_activeEffect;
+    std::map<LightingFX, AnimatedEffectDefinition> m_animatedEffectDefinitions;
     HueConnectionState *m_connectionState;
     bool m_shuttingDown = false;
 
