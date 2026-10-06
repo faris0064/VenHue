@@ -93,3 +93,4 @@ CMakeLists.txt.user*
 /.cache
 /log.txt
 /bridge.json
+/.direnv
