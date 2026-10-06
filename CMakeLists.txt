@@ -116,6 +116,7 @@ qt_add_qml_module(appVenHue
         src/configuration_manager.cpp
         src/logger.cpp
         src/parser.cpp
+        src/strobe_light_effect.cpp
         include/animated_effect_definition.h
         include/animated_light_effect.h
         include/controller.h
@@ -126,6 +127,7 @@ qt_add_qml_module(appVenHue
         include/configuration_manager.h
         include/logger.h
         include/parser.h
+        include/strobe_light_effect.h
 )
 
 set_target_properties(appVenHue PROPERTIES

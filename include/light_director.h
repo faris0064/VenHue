@@ -2,11 +2,13 @@
 #include "animated_effect_definition.h"
 #include "hue_connection_state.h"
 #include "parser.h"
+#include "strobe_light_effect.h"
 #include <QObject>
 #include <QSettings>
 #include <QTimer>
 #include <map>
 #include <memory>
+#include <optional>
 
 #include <huestream/HueStream.h>
 #include <huestream/config/Config.h>
@@ -102,12 +104,15 @@ private:
     void failForMessage(int messageId, int requestType);
     void replaceActiveEffect(const huestream::EffectPtr &effect);
     void applyAnimatedEffect(const AnimatedEffectDefinition &definition);
+    void applyStrobeEffect(const StrobeEffectDefinition &definition);
     std::string selectedAreaId() const;
     std::string selectedAreaName() const;
 
     std::shared_ptr<huestream::Config> m_config;
     std::shared_ptr<huestream::HueStream> m_hueStream;
     huestream::EffectPtr m_activeEffect;
+    std::shared_ptr<StrobeLightEffect> m_activeStrobeEffect;
+    std::optional<StrobeTiming> m_latestStrobeTiming;
     std::map<LightingFX, AnimatedEffectDefinition> m_animatedEffectDefinitions;
     HueConnectionState *m_connectionState;
     bool m_shuttingDown = false;
@@ -125,8 +130,6 @@ private:
         double blue = 0.0;           
         double brightness = 1.0;     
         double saturation = 1.0;     
-        bool strobe = false;
-        double strobeRate = 0.0; // in hz right now, should be dependant on bpm
     };
     
     // Generate the base light data with no modifiers applied
@@ -146,5 +149,6 @@ private:
 
 public slots:
     void onEffectChanged(const std::string &effectName, const VenueData &data, double currentTime);
+    void onTimingUpdated(const VenueData &data);
     void onSongStateChanged(bool isPlaying);
 };

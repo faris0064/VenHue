@@ -27,6 +27,10 @@ constexpr std::array ANIMATED_EFFECTS{
     std::pair{LightDirector::LightingFX::SILHOUETTES_SPOT, std::string_view{"silhouettes_spot"}},
     std::pair{LightDirector::LightingFX::BRE, std::string_view{"bre"}}};
 
+constexpr double STROBE_DUTY_CYCLE = 0.5;
+constexpr StrobeEffectDefinition STROBE_SLOW{2.0, STROBE_DUTY_CYCLE};
+constexpr StrobeEffectDefinition STROBE_FAST{4.0, STROBE_DUTY_CYCLE};
+
 std::map<LightDirector::LightingFX, AnimatedEffectDefinition> loadAnimatedEffects() {
     std::vector<std::string_view> names;
     names.reserve(ANIMATED_EFFECTS.size());
@@ -543,8 +547,6 @@ LightDirector::LightingData LightDirector::generateBaseLighting(LightingFX fx) {
             lighting.blue = 1.0;
             lighting.brightness = 1.0;
             lighting.saturation = 0.0;
-            lighting.strobe = true;
-            lighting.strobeRate = 2.0;
             break;
             
         case LightingFX::STROBE_FAST:
@@ -553,8 +555,6 @@ LightDirector::LightingData LightDirector::generateBaseLighting(LightingFX fx) {
             lighting.blue = 1.0;
             lighting.brightness = 1.0;
             lighting.saturation = 0.0;
-            lighting.strobe = true;
-            lighting.strobeRate = 4.0;
             break;
             
         case LightingFX::BLACKOUT_SLOW:
@@ -822,6 +822,7 @@ void LightDirector::replaceActiveEffect(const huestream::EffectPtr &effect) {
     m_hueStream->AddEffect(effect);
     effect->Enable();
     m_activeEffect = effect;
+    m_activeStrobeEffect.reset();
     m_hueStream->UnlockMixer();
 }
 
@@ -834,8 +835,26 @@ void LightDirector::applyAnimatedEffect(const AnimatedEffectDefinition &definiti
     replaceActiveEffect(effect);
 }
 
+void LightDirector::applyStrobeEffect(const StrobeEffectDefinition &definition) {
+    if (!m_hueStream || m_connectionState->hueState() != HueConnectionState::Streaming) {
+        return;
+    }
+
+    auto effect = std::make_shared<StrobeLightEffect>("VenHue", 2, definition, m_latestStrobeTiming);
+    replaceActiveEffect(effect);
+    m_activeStrobeEffect = effect;
+}
+
 // Generate base lighting from current LightingFX, then apply post-processing from current PostFX, before sending to Hue
 void LightDirector::applyFullEffect() {
+    if (m_currentLightingFX == LightingFX::STROBE_SLOW) {
+        applyStrobeEffect(STROBE_SLOW);
+        return;
+    }
+    if (m_currentLightingFX == LightingFX::STROBE_FAST) {
+        applyStrobeEffect(STROBE_FAST);
+        return;
+    }
     const auto definition = m_animatedEffectDefinitions.find(m_currentLightingFX);
     if (definition != m_animatedEffectDefinitions.end()) {
         applyAnimatedEffect(definition->second);
@@ -862,11 +881,24 @@ void LightDirector::updateFromEffectString(const std::string &effectName) {
 // Receives effect changes from VenueMonitor
 void LightDirector::onEffectChanged(const std::string &effectName, const VenueData &data, double currentTime) {
     Logger::info("Effect changed to: " + effectName + " at time: " + std::to_string(currentTime));
+    m_latestStrobeTiming = StrobeTiming{data.bpm, data.beat, std::chrono::steady_clock::now()};
     updateFromEffectString(effectName);
+}
+
+void LightDirector::onTimingUpdated(const VenueData &data) {
+    m_latestStrobeTiming = StrobeTiming{data.bpm, data.beat, std::chrono::steady_clock::now()};
+    if (!m_activeStrobeEffect) {
+        return;
+    }
+
+    m_hueStream->LockMixer();
+    m_activeStrobeEffect->updateTiming(*m_latestStrobeTiming);
+    m_hueStream->UnlockMixer();
 }
 
 void LightDirector::onSongStateChanged(bool isPlaying) {
     if (!isPlaying) {
+        m_latestStrobeTiming.reset();
         m_currentLightingFX = LightingFX::IDLE;
         applyFullEffect();
     }

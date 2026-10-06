@@ -65,6 +65,7 @@ void VenueMonitor::onMonitorTimer() {
                 lastKnownData = newData;
 
                 if (std::abs(newData.currentElapsed - lastElapsed) > 0.0001) {
+                    emit timingUpdated(newData);
                     printActiveEffect(newData, newData.currentElapsed);
                     lastElapsed = newData.currentElapsed;
                 }

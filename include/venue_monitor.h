@@ -19,6 +19,7 @@ public:
 
 signals:
     void effectChanged(const std::string &effectName, const VenueData &data, double currentTime);
+    void timingUpdated(const VenueData &data);
     void currentEffectChanged(const QString &effect);
     void songStateChanged(bool isPlaying);
 

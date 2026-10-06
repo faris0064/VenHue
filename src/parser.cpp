@@ -1,12 +1,32 @@
 #include "include/parser.h"
 #include "include/logger.h"
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <string>
 #include <sys/stat.h>
 #include <vector>
+
+namespace {
+
+std::optional<double> parseNumber(const std::string &value) {
+    try {
+        std::size_t parsedLength = 0;
+        const double number = std::stod(value, &parsedLength);
+        if (parsedLength != value.size() || !std::isfinite(number)) {
+            return std::nullopt;
+        }
+        return number;
+    }
+    catch (...) {
+        return std::nullopt;
+    }
+}
+
+} // namespace
 
 std::string Parser::stripQuotes(const std::string &input) {
     if (input.size() >= 2 && input.front() == '"' && input.back() == '"') {
@@ -41,14 +61,26 @@ VenueData Parser::parseDataFile(const std::string &filename) {
         }
 
         std::string key = line.substr(0, delim);
-        double timestamp = std::stod(line.substr(delim + 1));
+        const auto value = parseNumber(line.substr(delim + 1));
 
         if (key == "elapsed") {
-            result.currentElapsed = timestamp;
+            if (value) {
+                result.currentElapsed = *value;
+            }
         }
-        else {
-            result.cues[key].push_back(timestamp);
-            result.timeline.push_back({timestamp, key});
+        else if (key == "bpm") {
+            if (value && *value > 0.0) {
+                result.bpm = *value;
+            }
+        }
+        else if (key == "beat") {
+            if (value) {
+                result.beat = *value;
+            }
+        }
+        else if (value) {
+            result.cues[key].push_back(*value);
+            result.timeline.push_back({*value, key});
         }
     }
 
