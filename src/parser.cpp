@@ -78,12 +78,28 @@ VenueData Parser::parseDataFile(const std::string &filename) {
                 result.beat = *value;
             }
         }
+        else if (key == "next") {
+            if (value) {
+                result.keyframes.push_back({*value, KeyframeCommand::NEXT});
+            }
+        }
+        else if (key == "prev") {
+            if (value) {
+                result.keyframes.push_back({*value, KeyframeCommand::PREV});
+            }
+        }
+        else if (key == "first") {
+            if (value) {
+                result.keyframes.push_back({*value, KeyframeCommand::FIRST});
+            }
+        }
         else if (value) {
             result.cues[key].push_back(*value);
             result.timeline.push_back({*value, key});
         }
     }
 
+    std::sort(result.keyframes.begin(), result.keyframes.end());
     std::sort(result.timeline.begin(), result.timeline.end());
 
     return result;

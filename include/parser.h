@@ -18,12 +18,24 @@ struct LightingEvent {
     }
 };
 
+enum class KeyframeCommand {
+    NEXT,
+    PREV,
+    FIRST
+};
+
+struct LightingKeyframe{
+    double timestamp;
+    KeyframeCommand command;
+};
+
 struct VenueData {
     double currentElapsed = 0.0;
     std::optional<double> bpm;
     std::optional<double> beat;
     std::vector<LightingEvent> timeline;
     std::map<std::string, std::vector<double>> cues;
+    std::vector<LightingKeyframe> keyframes;
     time_t lastModified = 0;
 };
 
