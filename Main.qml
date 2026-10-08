@@ -9,38 +9,53 @@ ApplicationWindow {
     height: 720
     title: "VenHue"
 
+    // CONSTANTS
+    readonly property real kMenuLeftFraction: 0.07
+    readonly property real kMenuTopFraction: 0.18
+    readonly property real kMenuWidthFraction: 0.4
+
+
     StackView {
         id: view
         initialItem: welcomePage1
+        anchors.fill: parent
     }
 
     // main
     Component {
         id: mainPage
-        ColumnLayout {
-            spacing: 1
 
-            Label {
-                text: "VenHue"
-                font.pixelSize: 24
-                font.bold: true
-            }
+        Item {
+            ColumnLayout {
+                spacing: 2
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: parent.width * kMenuLeftFraction
+                anchors.topMargin: parent.height * kMenuTopFraction
+                width: parent.width * kMenuWidthFraction
 
-            Label {
-                text: controller.hueStatusText
-            }
+                Label {
+                    text: "VenHue"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
 
-            Label {
-                text: controller.currentAreaName
-            }
+                Label {
+                    text: controller.hueStatusText
+                }
 
-            Label {
-                text: controller.currentEffect
-            }
+                Label {
+                    text: controller.currentAreaName
+                }
 
-            Button {
-                text: "Settings"
-                onClicked: view.push(settingsScreen)
+                Label {
+                    text: controller.currentEffect
+                }
+
+                Button {
+                    text: "Settings"
+                    onClicked: view.push(settingsScreen)
+                }
             }
         }
     }
@@ -49,96 +64,123 @@ ApplicationWindow {
     Component {
         id: settingsScreen
 
-        ColumnLayout {
-            spacing: 1
+        Item {
 
-            Label {
-                text: "Settings"
-                font.pixelSize: 24
-                font.bold: true
-            }
+        
+            ColumnLayout {
+                spacing: 2
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: parent.width * kMenuLeftFraction
+                anchors.topMargin: parent.height * kMenuTopFraction
+                width: parent.width * kMenuWidthFraction
 
-            Button {
-                text: "Reconfigure Hue Bridge"
-                onClicked: view.push(welcomePage3, { firstTimeSetup: false} )
-            }
+                Label {
+                    text: "Settings"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
 
-            Button {
-                text: "Back"
-                onClicked: view.pop()
+                Button {
+                    text: "Reconfigure Hue Bridge"
+                    onClicked: view.push(welcomePage3, { firstTimeSetup: false} )
+                }
+
+                Button {
+                    text: "Back"
+                    onClicked: view.pop()
+                }
             }
         }
     }
 
     // welcome
+
     Component {
         id: welcomePage1
 
-        ColumnLayout{
-            spacing: 1
+        Item {
 
-            Label{
-                text: "Welcome to VenHue!"
-                font.pixelSize: 24
-                font.bold: true
-            }
+            ColumnLayout {
+                spacing: 2
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: parent.width * kMenuLeftFraction
+                anchors.topMargin: parent.height * kMenuTopFraction
+                width: parent.width * kMenuWidthFraction
 
-            Label {
-                text: "Choose your platform"
-            }
+                Label{
+                    text: "Welcome to VenHue!"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
 
-            Button {
-                text: "RPCS3"
-                onClicked: view.push(welcomePage2)
-            }
+                Label {
+                    text: "Choose your platform"
+                }
 
-            Button {
-                text: "Xbox 360"
-                enabled: false
+                Button {
+                    text: "RPCS3"
+                    onClicked: view.push(welcomePage2)
+                }
+
+                Button {
+                    text: "Xbox 360"
+                    enabled: false
+                }
             }
         }
     }
+
 
     // welcome paths
     Component {
         id: welcomePage2
 
-        ColumnLayout {
-            spacing: 1
+        Item {
 
-            Label {
-                text: "Enter your Rock Band 3 USRDIR path"
-                font.pixelSize: 24
-                font.bold: true
+            ColumnLayout {
+                spacing: 2
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: parent.width * kMenuLeftFraction
+                anchors.topMargin: parent.height * kMenuTopFraction
+                width: parent.width * kMenuWidthFraction
+
+                Label {
+                    text: "Enter your Rock Band 3 USRDIR path"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
+
+                Label {
+                    text: controller.usrdirPathStatus
+                }
+
+                TextField {
+                    placeholderText: controller.getUsrdirPath()
+
+                    onTextEdited: controller.setUsrdirPath(text)
+
+                }
+
+                Button {
+                    text: "Browse..."
+                    onClicked: controller.browseForUsrdirPath()
+                }
+
+                Button {
+                    text: "Continue"
+                    enabled: controller.isUsrdirPathValid
+                    onClicked: view.push(welcomePage3, { firstTimeSetup: true })
+                }
+                
+                Button {
+                    text: "Back"
+                    onClicked: view.pop()
+                }
+                
             }
-
-            Label {
-                text: controller.usrdirPathStatus
-            }
-
-            TextField {
-                placeholderText: controller.getUsrdirPath()
-
-                onTextEdited: controller.setUsrdirPath(text)
-
-            }
-
-            Button {
-                text: "Browse..."
-                onClicked: controller.browseForUsrdirPath()
-            }
-
-            Button {
-                text: "Continue"
-                enabled: controller.isUsrdirPathValid
-                onClicked: view.push(welcomePage3, { firstTimeSetup: true })
-            }
-            
-            Button {
-                text: "Back"
-                onClicked: view.pop()
-            }
-            
         }
     }
 
@@ -146,46 +188,55 @@ ApplicationWindow {
     Component {
         id: welcomePage3
 
-        ColumnLayout {
-            spacing: 1
-
-            Label {
-                text: "Connect to your Hue Bridge"
-                font.pixelSize: 24
-                font.bold: true
-            }
+        Item {
 
             property bool firstTimeSetup: false
+        
+            ColumnLayout {
+                spacing: 2
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: parent.width * kMenuLeftFraction
+                anchors.topMargin: parent.height * kMenuTopFraction
+                width: parent.width * kMenuWidthFraction
 
-            Label {
-                text: controller.hueStatusText
-            }
+                Label {
+                    text: "Connect to your Hue Bridge"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
 
-            Label {
-                text: "Press the link button on your Hue Bridge."
-                visible: controller.hueState === HueConnectionState.AwaitingLink
-            }
 
-            Button {
-                text: "Connect"
-                visible: controller.hueState === HueConnectionState.Unconfigured
-                onClicked: controller.connectHue()
-            }
+                Label {
+                    text: controller.hueStatusText
+                }
 
-            Button {
-                text: "Retry"
-                visible: controller.hueState === HueConnectionState.Error || controller.hueState === HueConnectionState.NoAreas || controller.hueState === HueConnectionState.Disconnected
-                onClicked: controller.retryHueConnection()
-            }
+                Label {
+                    text: "Press the link button on your Hue Bridge."
+                    visible: controller.hueState === HueConnectionState.AwaitingLink
+                }
 
-            Button {
-                text: "Cancel"
-                visible: controller.hueState === HueConnectionState.Searching
-                    || controller.hueState === HueConnectionState.AwaitingLink
-                    || controller.hueState === HueConnectionState.LoadingBridge
-                    || controller.hueState === HueConnectionState.ConnectingArea
-                    || controller.hueState === HueConnectionState.Reconnecting
-                onClicked: controller.cancelHueConnection()
+                Button {
+                    text: "Connect"
+                    visible: controller.hueState === HueConnectionState.Unconfigured
+                    onClicked: controller.connectHue()
+                }
+
+                Button {
+                    text: "Retry"
+                    visible: controller.hueState === HueConnectionState.Error || controller.hueState === HueConnectionState.NoAreas || controller.hueState === HueConnectionState.Disconnected
+                    onClicked: controller.retryHueConnection()
+                }
+
+                Button {
+                    text: "Cancel"
+                    visible: controller.hueState === HueConnectionState.Searching
+                        || controller.hueState === HueConnectionState.AwaitingLink
+                        || controller.hueState === HueConnectionState.LoadingBridge
+                        || controller.hueState === HueConnectionState.ConnectingArea
+                        || controller.hueState === HueConnectionState.Reconnecting
+                    onClicked: controller.cancelHueConnection()
+                }
             }
         }
     }
