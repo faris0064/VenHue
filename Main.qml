@@ -17,7 +17,7 @@ ApplicationWindow {
 
     StackView {
         id: view
-        initialItem: welcomePage1
+        initialItem: controller.baseOnboardingComplete ? mainPage : welcomePage1
         anchors.fill: parent
     }
 
@@ -121,7 +121,10 @@ ApplicationWindow {
 
                 Button {
                     text: "RPCS3"
-                    onClicked: view.push(welcomePage2)
+                    onClicked: { 
+                        controller.setPlatform("RPCS3")
+                        view.push(welcomePage2)
+                    }
                 }
 
                 Button {
@@ -236,6 +239,28 @@ ApplicationWindow {
                         || controller.hueState === HueConnectionState.ConnectingArea
                         || controller.hueState === HueConnectionState.Reconnecting
                     onClicked: controller.cancelHueConnection()
+                }
+
+                ComboBox {
+                    visible: controller.hueState === HueConnectionState.SelectingArea || controller.hueState === HueConnectionState.ConnectingArea
+                    enabled: controller.hueState === HueConnectionState.SelectingArea
+                    model: controller.entertainmentAreas
+                    textRole: "name"
+                    valueRole: "id"
+                    currentIndex: -1
+                    displayText: currentIndex === -1 ? "Select an Entertainment Area" : currentText
+
+                    onActivated: controller.selectEntertainmentArea(currentValue)
+                }
+
+                Button {
+                    text: firstTimeSetup ? "Finish" : "Done"
+                    visible: controller.hueState === HueConnectionState.SelectingArea 
+                            || controller.hueState === HueConnectionState.ConnectingArea
+                            || controller.hueState === HueConnectionState.Streaming
+                    enabled: controller.hueState === HueConnectionState.Streaming
+
+                    onClicked: firstTimeSetup ? view.replace(null, mainPage) : view.pop()
                 }
             }
         }
