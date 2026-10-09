@@ -1,8 +1,10 @@
 #include "include/venue_monitor.h"
 #include "include/logger.h"
+#include "parser.h"
 #include <QDir>
 #include <QFile>
 #include <fstream>
+#include <string>
 
 VenueMonitor::VenueMonitor(QObject *parent)
     : QObject(parent), monitorTimer(nullptr), lastElapsed(-1.0), wasPlaying(false), m_currentEffect("Idle...") {
@@ -67,6 +69,7 @@ void VenueMonitor::onMonitorTimer() {
                 if (std::abs(newData.currentElapsed - lastElapsed) > 0.0001) {
                     emit timingUpdated(newData);
                     printActiveEffect(newData, newData.currentElapsed);
+                    processCrossedKeyframes(newData);
                     lastElapsed = newData.currentElapsed;
                 }
             }
@@ -120,4 +123,32 @@ void VenueMonitor::printActiveEffect(const VenueData &data, double currentTime) 
     }
 
     Logger::info(activeEffect.empty() ? "Idle..." : activeEffect);
+}
+
+void VenueMonitor::processCrossedKeyframes(const VenueData &data) {
+    if (lastElapsed < 0.0 || data.currentElapsed < lastElapsed) {
+        return;
+    }
+
+    for (const auto &keyframe : data.keyframes) {
+        if (keyframe.timestamp > lastElapsed && keyframe.timestamp <= data.currentElapsed) {
+            switch (keyframe.command) {
+                case KeyframeCommand::FIRST:
+                    Logger::info("Keyframe: first at " + std::to_string(keyframe.timestamp));
+                    break;
+                case KeyframeCommand::NEXT:
+                    Logger::info("Keyframe: next at " + std::to_string(keyframe.timestamp));
+                    break;
+                case KeyframeCommand::PREV:
+                    Logger::info("Keyframe: prev at " + std::to_string(keyframe.timestamp));
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (keyframe.timestamp > data.currentElapsed) {
+            return;
+        }
+    }
 }
