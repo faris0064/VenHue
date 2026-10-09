@@ -27,6 +27,10 @@ enum class KeyframeCommand {
 struct LightingKeyframe{
     double timestamp;
     KeyframeCommand command;
+
+    bool operator<(const LightingKeyframe &other) const {
+        return timestamp < other.timestamp;
+    }
 };
 
 struct VenueData {
