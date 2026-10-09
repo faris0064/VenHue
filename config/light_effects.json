@@ -76,37 +76,43 @@
       "palette": [[1.0, 0.4, 0.0], [1.0, 0.15, 0.0], [1.0, 0.7, 0.05], [0.95, 0.05, 0.2]],
       "brightness": 1.0,
       "entry_duration_ms": 80,
-      "transition_duration_ms": 80
+      "transition_duration_ms": 80,
+      "shuffle": true
     },
     "manual_cool": {
       "palette": [[0.0, 0.8, 1.0], [0.05, 0.35, 1.0], [0.0, 0.85, 0.65], [0.35, 0.75, 1.0]],
       "brightness": 1.0,
       "entry_duration_ms": 80,
-      "transition_duration_ms": 80
+      "transition_duration_ms": 80,
+      "shuffle": true
     },
     "dischord": {
       "palette": [[0.0, 0.25, 1.0], [0.0, 1.0, 0.15], [0.65, 0.0, 1.0], [1.0, 0.85, 0.0]],
       "brightness": 1.0,
       "entry_duration_ms": 80,
-      "transition_duration_ms": 80
+      "transition_duration_ms": 80,
+      "shuffle": true
     },
     "verse": {
       "palette": [[1.0, 0.55, 0.05], [1.0, 0.30, 0.08], [0.60, 0.85, 0.08], [0.12, 0.65, 0.18]],
       "brightness": 0.8,
       "entry_duration_ms": 80,
-      "transition_duration_ms": 80
+      "transition_duration_ms": 80,
+      "shuffle": true
     },
     "chorus": {
       "palette": [[1.0, 0.02, 0.02], [1.0, 0.0, 0.45], [0.45, 0.0, 1.0], [0.02, 0.12, 1.0]],
       "brightness": 1.0,
       "entry_duration_ms": 80,
-      "transition_duration_ms": 80
+      "transition_duration_ms": 80,
+      "shuffle": true
     },
     "stomp": {
-      "palette": [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+      "palette": [[1.0, 1.0, 1.0], [0.0, 0.0, 0.0]],
       "brightness": 1.0,
-      "entry_duration_ms": 80,
-      "transition_duration_ms": 80
+      "entry_duration_ms": 40,
+      "transition_duration_ms": 40,
+      "shuffle": false
     }
   }
 }

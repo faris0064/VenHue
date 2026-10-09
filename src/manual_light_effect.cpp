@@ -91,8 +91,12 @@ void ManualLightEffect::UpdateGroup(huestream::GroupPtr group) {
 
 
     std::vector<std::size_t> targets(m_definition.palette.size());
-    std::iota(targets.begin(), targets.end(), 0);
-    std::shuffle(targets.begin(), targets.end(), m_random);
+
+    if (m_definition.shuffle == true) {
+        std::iota(targets.begin(), targets.end(), 0);
+        std::shuffle(targets.begin(), targets.end(), m_random);
+    }
+    
 
     const auto now = std::chrono::steady_clock::now();
     std::size_t channelIndex = 0;
@@ -107,7 +111,9 @@ void ManualLightEffect::UpdateGroup(huestream::GroupPtr group) {
 
         const auto currentColor = light->GetColor();
         const RgbColor startColor{currentColor.GetR(), currentColor.GetG(), currentColor.GetB()};
-        const std::size_t targetIndex = targets[channelIndex % targets.size()];
+
+        const std::size_t targetIndex = (m_definition.shuffle ? targets[channelIndex % targets.size()] : 0);
+        
         m_channels[light->GetId()] = {
             startColor,
             startColor,

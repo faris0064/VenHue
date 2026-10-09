@@ -10,4 +10,5 @@ struct ManualEffectDefinition {
     double brightness;
     std::chrono::milliseconds transitionDuration;
     std::chrono::milliseconds entryDuration;
+    bool shuffle;
 };

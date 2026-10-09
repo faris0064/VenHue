@@ -41,7 +41,8 @@ namespace {
         QStringLiteral("palette"),
         QStringLiteral("brightness"),
         QStringLiteral("entry_duration_ms"),
-        QStringLiteral("transition_duration_ms")
+        QStringLiteral("transition_duration_ms"),
+        QStringLiteral("shuffle")
     };
 
     bool readNumber(const QJsonObject &object, const QString &field, double minimum, double maximum,
@@ -72,6 +73,17 @@ namespace {
             return false;
         }
         result = std::chrono::milliseconds(static_cast<std::chrono::milliseconds::rep>(value));
+        return true;
+    }
+
+    bool readBool(const QJsonObject &object, const QString &field, bool &result, std::string &error) {
+        const QJsonValue value = object.value(field);
+        if(!value.isBool()) {
+            error = field.toStdString() + " must be a boolean";
+            return false;
+        }
+
+        result = value.toBool();
         return true;
     }
 
@@ -169,7 +181,8 @@ namespace {
 
         if (!readPalette(object, definition.palette, error) || !readNumber(object, QStringLiteral("brightness"), 0.0, 1.0, true, definition.brightness, error)
                                                             || !readMilliseconds(object, QStringLiteral("entry_duration_ms"), true, definition.entryDuration, error)
-                                                            || !readMilliseconds(object, QStringLiteral("transition_duration_ms"), true, definition.transitionDuration, error)) {
+                                                            || !readMilliseconds(object, QStringLiteral("transition_duration_ms"), true, definition.transitionDuration, error)
+                                                            || !readBool(object, QStringLiteral("shuffle"), definition.shuffle, error)) {
             return false;                                                
         }
 
