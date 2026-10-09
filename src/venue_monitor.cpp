@@ -134,13 +134,13 @@ void VenueMonitor::processCrossedKeyframes(const VenueData &data) {
         if (keyframe.timestamp > lastElapsed && keyframe.timestamp <= data.currentElapsed) {
             switch (keyframe.command) {
                 case KeyframeCommand::FIRST:
-                    Logger::info("Keyframe: first at " + std::to_string(keyframe.timestamp));
+                    emit keyframeCrossed(KeyframeCommand::FIRST);
                     break;
                 case KeyframeCommand::NEXT:
-                    Logger::info("Keyframe: next at " + std::to_string(keyframe.timestamp));
+                    emit keyframeCrossed(KeyframeCommand::NEXT);
                     break;
                 case KeyframeCommand::PREV:
-                    Logger::info("Keyframe: prev at " + std::to_string(keyframe.timestamp));
+                    emit keyframeCrossed(KeyframeCommand::PREV);
                     break;
                 default:
                     break;

@@ -21,6 +21,7 @@ signals:
     void effectChanged(const std::string &effectName, const VenueData &data, double currentTime);
     void timingUpdated(const VenueData &data);
     void currentEffectChanged(const QString &effect);
+    void keyframeCrossed(const KeyframeCommand);
     void songStateChanged(bool isPlaying);
 
 private slots:

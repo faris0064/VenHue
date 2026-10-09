@@ -1,5 +1,7 @@
 #include "light_effect_loader.h"
+#include "animated_effect_definition.h"
 #include "logger.h"
+#include "manual_effect_definition.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -10,9 +12,19 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
+#include <qcoreapplication.h>
+#include <qfiledevice.h>
+#include <qjsondocument.h>
+#include <qjsonobject.h>
+#include <qjsonparseerror.h>
+#include <qjsonvalue.h>
+#include <qobject.h>
 #include <set>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -24,6 +36,13 @@ namespace {
         QStringLiteral("duration_jitter"),
         QStringLiteral("transition_mode"),
         QStringLiteral("transition_curve")};
+
+    const std::set<QString> MANUAL_DEF_FIELDS {
+        QStringLiteral("palette"),
+        QStringLiteral("brightness"),
+        QStringLiteral("entry_duration_ms"),
+        QStringLiteral("transition_duration_ms")
+    };
 
     bool readNumber(const QJsonObject &object, const QString &field, double minimum, double maximum,
                     bool maximumInclusive, double &result, std::string &error) {
@@ -96,7 +115,7 @@ namespace {
         return true;
     }
 
-    bool parseDefinition(const QJsonObject &object, AnimatedEffectDefinition &definition, std::string &error) {
+    bool parseAnimatedDefinition(const QJsonObject &object, AnimatedEffectDefinition &definition, std::string &error) {
         for (auto field = object.begin(); field != object.end(); ++field) {
             if (DEFINITION_FIELDS.count(field.key()) == 0) {
                 error = "unknown field: " + field.key().toStdString();
@@ -132,35 +151,72 @@ namespace {
         return true;
     }
 
+    bool parseManualDefinition(const QJsonObject &object, ManualEffectDefinition &definition, std::string &error) {
+
+        for (auto field = object.begin(); field != object.end(); ++field) {
+            if (MANUAL_DEF_FIELDS.count(field.key()) == 0) {
+                error = "unknown field: " + field.key().toStdString();
+                return false;
+            }
+        }
+        
+        for (const QString &field : MANUAL_DEF_FIELDS) {
+            if (!object.contains(field)) {
+                error = "missing required field: " + field.toStdString();
+                return false;
+            }
+        }
+
+        if (!readPalette(object, definition.palette, error) || !readNumber(object, QStringLiteral("brightness"), 0.0, 1.0, true, definition.brightness, error)
+                                                            || !readMilliseconds(object, QStringLiteral("entry_duration_ms"), true, definition.entryDuration, error)
+                                                            || !readMilliseconds(object, QStringLiteral("transition_duration_ms"), true, definition.transitionDuration, error)) {
+            return false;                                                
+        }
+
+        return true;
+    }
+
+    // Replace return type with std::expected once i figure out why c++23 wasn't working
+    std::optional<QJsonObject> parseEffectsObject(const QString &path) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            Logger::error("Unable to load light effects from " + path.toStdString() + ": " + file.errorString().toStdString());
+            return std::nullopt;
+        }
+        
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+
+        if (parseError.error != QJsonParseError::NoError) {
+            Logger::error("Unable to parse light effects from " + path.toStdString() + ": " + parseError.errorString().toStdString());
+            return std::nullopt;
+        }
+
+        if (!document.isObject() || !document.object().value(QStringLiteral("effects")).isObject()) {
+            Logger::warning("Light effects file must contain a top-level effects object.");
+            return std::nullopt;
+        }
+
+        return document.object().value(QStringLiteral("effects")).toObject();
+
+    }
+
 } // namespace
 
 AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::string_view> &effectNames) {
     AnimatedEffectDefinitions definitions;
     const std::set<std::string_view, std::less<>> validEffectNames(effectNames.begin(), effectNames.end());
     const QString path = QCoreApplication::applicationDirPath() + QStringLiteral("/light_effects.json");
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        Logger::warning("Unable to load animated light effects from " + path.toStdString() + ": " + file.errorString().toStdString() + ". Falling back to static lighting.");
+    const std::optional<QJsonObject> effects = parseEffectsObject(path);
+
+    if (effects == std::nullopt) {
         return definitions;
     }
 
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError) {
-        Logger::warning("Unable to parse animated light effects from " + path.toStdString() + ": " + parseError.errorString().toStdString() + ". Falling back to static lighting.");
-        return definitions;
-    }
-    if (!document.isObject() || !document.object().value(QStringLiteral("effects")).isObject()) {
-        Logger::warning("Animated light effects file must contain a top-level effects object. Falling back to static lighting");
-        return definitions;
-    }
-
-    const QJsonObject effects = document.object().value(QStringLiteral("effects")).toObject();
     std::set<std::string, std::less<>> invalidDefinitions;
-    for (auto effect = effects.begin(); effect != effects.end(); ++effect) {
+    for (auto effect = effects->begin(); effect != effects->end(); ++effect) {
         const std::string name = effect.key().toStdString();
         if (validEffectNames.count(name) == 0) {
-            Logger::warning("Unknown animated light effect definition ignored: " + name);
             continue;
         }
         if (!effect.value().isObject()) {
@@ -171,7 +227,7 @@ AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::s
 
         AnimatedEffectDefinition definition;
         std::string error;
-        if (!parseDefinition(effect.value().toObject(), definition, error)) {
+        if (!parseAnimatedDefinition(effect.value().toObject(), definition, error)) {
             Logger::warning("Invalid animated light effect definition for " + name + ": " + error + ". This effect will fall back to static lighting.");
             invalidDefinitions.insert(name);
             continue;
@@ -185,5 +241,47 @@ AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::s
         }
     }
     Logger::info("Loaded " + std::to_string(definitions.size()) + " animated light effect definitions from " + path.toStdString());
+    return definitions;
+}
+
+ManualEffectDefinitions loadManualEffectDefinitions(const std::vector<std::string_view> &effectNames) {
+    ManualEffectDefinitions definitions;
+
+    const std::set<std::string_view, std::less<>> validEffectNames(effectNames.begin(), effectNames.end());
+    const QString path = QCoreApplication::applicationDirPath() + QStringLiteral("/light_effects.json");
+    const std::optional<QJsonObject> effects = parseEffectsObject(path);
+
+    if (effects == std::nullopt) {
+        return definitions;
+    }
+
+    std::set<std::string, std::less<>> invalidDefinitions;
+    for (auto effect = effects->begin(); effect != effects->end(); ++effect) {
+        const std::string name = effect.key().toStdString();
+        if (validEffectNames.count(name) == 0) {
+            continue;
+        }
+        if (!effect.value().isObject()) {
+            Logger::warning("Invalid manual light effect definition for " + name + ": definition must be an object. This effect will fall back to static lighting.");
+            invalidDefinitions.insert(name);
+            continue;
+        }
+
+        ManualEffectDefinition definition;
+        std::string error;
+        if (!parseManualDefinition(effect.value().toObject(), definition, error)) {
+            Logger::warning("Invalid manual light effect definition for " + name + ": " + error + ". This effect will fall back to static lighting.");
+            invalidDefinitions.insert(name);
+            continue;
+        }
+        definitions.emplace(name, std::move(definition));
+    }
+
+    for (const std::string_view name : effectNames) {
+        if (definitions.count(name) == 0 && invalidDefinitions.count(name) == 0) {
+            Logger::warning("Manual light effect definition missing for " + std::string(name) + ". This effect will fall back to static lighting.");
+        }
+    }
+    Logger::info("Loaded " + std::to_string(definitions.size()) + " Manual light effect definitions from " + path.toStdString());
     return definitions;
 }

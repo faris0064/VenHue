@@ -1,11 +1,17 @@
 #include "light_director.h"
 #include "animated_light_effect.h"
+#include "hue_connection_state.h"
 #include "light_effect_loader.h"
+#include "manual_effect_definition.h"
+#include "manual_light_effect.h"
+#include "parser.h"
 #include <QHostInfo>
 #include <QMetaObject>
 #include <QTimer>
 #include <algorithm>
 #include <array>
+#include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -25,7 +31,17 @@ constexpr std::array ANIMATED_EFFECTS{
     std::pair{LightDirector::LightingFX::FRENZY, std::string_view{"frenzy"}},
     std::pair{LightDirector::LightingFX::SILHOUETTES, std::string_view{"silhouettes"}},
     std::pair{LightDirector::LightingFX::SILHOUETTES_SPOT, std::string_view{"silhouettes_spot"}},
-    std::pair{LightDirector::LightingFX::BRE, std::string_view{"bre"}}};
+    std::pair{LightDirector::LightingFX::BRE, std::string_view{"bre"}}
+};
+
+constexpr std::array MANUAL_EFFECTS {
+    std::pair{LightDirector::LightingFX::MANUAL_COOL, std::string_view{"manual_cool"}},
+    std::pair{LightDirector::LightingFX::MANUAL_WARM, std::string_view{"manual_warm"}},
+    std::pair{LightDirector::LightingFX::VERSE, std::string_view{"verse"}},
+    std::pair{LightDirector::LightingFX::CHORUS, std::string_view{"chorus"}},
+    std::pair{LightDirector::LightingFX::DISCHORD, std::string_view{"dischord"}},
+    std::pair{LightDirector::LightingFX::STOMP, std::string_view{"stomp"}}
+};
 
 constexpr double STROBE_DUTY_CYCLE = 0.5;
 constexpr StrobeEffectDefinition STROBE_SLOW{2.0, STROBE_DUTY_CYCLE};
@@ -49,11 +65,31 @@ std::map<LightDirector::LightingFX, AnimatedEffectDefinition> loadAnimatedEffect
     return byFx;
 }
 
+std::map<LightDirector::LightingFX, ManualEffectDefinition> loadManualEffects() {
+    std::vector<std::string_view> names;
+    names.reserve(MANUAL_EFFECTS.size());
+    for (const auto &[fx, name] : MANUAL_EFFECTS) {
+        names.push_back(name);
+    }
+
+    ManualEffectDefinitions byName = loadManualEffectDefinitions(names);
+    std::map<LightDirector::LightingFX, ManualEffectDefinition> byFx;
+    for (const auto &[fx, name] : MANUAL_EFFECTS) {
+        const auto definition = byName.find(name);
+        if (definition != byName.end()) {
+            byFx.emplace(fx, std::move(definition->second));
+        }
+    }
+    return byFx;
+}
+
 } // namespace
 
 LightDirector::LightDirector(QObject *parent)
-    : QObject(parent), m_animatedEffectDefinitions(loadAnimatedEffects()), m_connectionState(new HueConnectionState(this)), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
-    // huestream stores the config by itself, don't need to have any QSettings stuff for it anymore
+    : QObject(parent), m_animatedEffectDefinitions(loadAnimatedEffects()), m_manualEffectDefinitions(loadManualEffects()),
+    m_connectionState(new HueConnectionState(this)), m_currentLightingFX(LightingFX::IDLE), m_currentPostFX(PostFX::DEFAULT) {
+
+    
     m_config = std::make_shared<huestream::Config>("VenHue", QHostInfo::localHostName().toStdString(), huestream::PersistenceEncryptionKey("VenHuePersistenceKey"));
     m_hueStream = std::make_shared<huestream::HueStream>(m_config);
 
@@ -823,6 +859,7 @@ void LightDirector::replaceActiveEffect(const huestream::EffectPtr &effect) {
     effect->Enable();
     m_activeEffect = effect;
     m_activeStrobeEffect.reset();
+    m_activeManualEffect.reset();
     m_hueStream->UnlockMixer();
 }
 
@@ -833,6 +870,16 @@ void LightDirector::applyAnimatedEffect(const AnimatedEffectDefinition &definiti
 
     auto effect = std::make_shared<AnimatedLightEffect>("VenHue", 2, definition);
     replaceActiveEffect(effect);
+}
+
+void LightDirector::applyManualEffect(const ManualEffectDefinition &definition) {
+    if (!m_hueStream || m_connectionState->hueState() != HueConnectionState::Streaming) {
+        return;
+    }
+
+    auto effect = std::make_shared<ManualLightEffect>("VenHue", 2, definition);
+    replaceActiveEffect(effect);
+    m_activeManualEffect = effect;
 }
 
 void LightDirector::applyStrobeEffect(const StrobeEffectDefinition &definition) {
@@ -855,9 +902,14 @@ void LightDirector::applyFullEffect() {
         applyStrobeEffect(STROBE_FAST);
         return;
     }
-    const auto definition = m_animatedEffectDefinitions.find(m_currentLightingFX);
-    if (definition != m_animatedEffectDefinitions.end()) {
-        applyAnimatedEffect(definition->second);
+    const auto animatedDefinition = m_animatedEffectDefinitions.find(m_currentLightingFX);
+    if (animatedDefinition != m_animatedEffectDefinitions.end()) {
+        applyAnimatedEffect(animatedDefinition->second);
+        return;
+    }
+    const auto manualDefinition = m_manualEffectDefinitions.find(m_currentLightingFX);
+    if (manualDefinition != m_manualEffectDefinitions.end()) {
+        applyManualEffect(manualDefinition->second);
         return;
     }
     LightingData baseLighting = generateBaseLighting(m_currentLightingFX);
@@ -893,6 +945,16 @@ void LightDirector::onTimingUpdated(const VenueData &data) {
 
     m_hueStream->LockMixer();
     m_activeStrobeEffect->updateTiming(*m_latestStrobeTiming);
+    m_hueStream->UnlockMixer();
+}
+
+void LightDirector::onKeyframeCommand(KeyframeCommand command) {
+    if (!m_activeManualEffect) {
+        return;
+    }
+
+    m_hueStream->LockMixer();
+    m_activeManualEffect->handleCommand(command);
     m_hueStream->UnlockMixer();
 }
 

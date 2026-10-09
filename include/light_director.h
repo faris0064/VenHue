@@ -1,6 +1,9 @@
 #pragma once
 #include "animated_effect_definition.h"
 #include "hue_connection_state.h"
+#include "light_effect_loader.h"
+#include "manual_effect_definition.h"
+#include "manual_light_effect.h"
 #include "parser.h"
 #include "strobe_light_effect.h"
 #include <QObject>
@@ -104,6 +107,7 @@ private:
     void failForMessage(int messageId, int requestType);
     void replaceActiveEffect(const huestream::EffectPtr &effect);
     void applyAnimatedEffect(const AnimatedEffectDefinition &definition);
+    void applyManualEffect(const ManualEffectDefinition &definition);
     void applyStrobeEffect(const StrobeEffectDefinition &definition);
     std::string selectedAreaId() const;
     std::string selectedAreaName() const;
@@ -112,8 +116,10 @@ private:
     std::shared_ptr<huestream::HueStream> m_hueStream;
     huestream::EffectPtr m_activeEffect;
     std::shared_ptr<StrobeLightEffect> m_activeStrobeEffect;
+    std::shared_ptr<ManualLightEffect> m_activeManualEffect;
     std::optional<StrobeTiming> m_latestStrobeTiming;
     std::map<LightingFX, AnimatedEffectDefinition> m_animatedEffectDefinitions;
+    std::map<LightingFX, ManualEffectDefinition> m_manualEffectDefinitions;
     HueConnectionState *m_connectionState;
     bool m_shuttingDown = false;
 
@@ -150,5 +156,6 @@ private:
 public slots:
     void onEffectChanged(const std::string &effectName, const VenueData &data, double currentTime);
     void onTimingUpdated(const VenueData &data);
+    void onKeyframeCommand(KeyframeCommand command);
     void onSongStateChanged(bool isPlaying);
 };
