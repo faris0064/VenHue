@@ -128,6 +128,11 @@ qt_add_qml_module(appVenHue
         include/logger.h
         include/parser.h
         include/strobe_light_effect.h
+        include/manual_light_effect.h
+        include/rgb_color.h
+        include/manual_effect_definition.h
+        src/manual_light_effect.cpp
+        include/hsv_color.h
 )
 
 set_target_properties(appVenHue PROPERTIES

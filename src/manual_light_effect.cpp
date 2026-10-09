@@ -1,15 +1,20 @@
-#include "animated_light_effect.h"
+#include "manual_light_effect.h"
 #include "hsv_color.h"
-
+#include "manual_effect_definition.h"
+#include "parser.h"
+#include "rgb_color.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <huestream/common/data/Group.h>
+#include <huestream/common/data/Light.h>
+#include <huestream/effect/effects/base/Effect.h>
+#include <random>
 #include <numeric>
 #include <utility>
-#include <vector>
 
 namespace {
-
-    constexpr double PI = 3.14159265358979323846;
 
     HsvColor rgbToHsv(const RgbColor &color) {
         const double maximum = std::max({color.red, color.green, color.blue});
@@ -71,18 +76,19 @@ namespace {
 
 } // namespace
 
-AnimatedLightEffect::AnimatedLightEffect(std::string name, unsigned int layer, const AnimatedEffectDefinition &definition)
+ManualLightEffect::ManualLightEffect(std::string name, unsigned int layer, const ManualEffectDefinition & definition)
     : huestream::Effect(std::move(name), layer), m_definition(definition) {
     std::random_device randomDevice;
     std::seed_seq seed{randomDevice(), randomDevice(), randomDevice(), randomDevice()};
     m_random.seed(seed);
 }
 
-void AnimatedLightEffect::UpdateGroup(huestream::GroupPtr group) {
+void ManualLightEffect::UpdateGroup(huestream::GroupPtr group) {
     m_channels.clear();
     if (!group || !group->GetLights()) {
         return;
     }
+
 
     std::vector<std::size_t> targets(m_definition.palette.size());
     std::iota(targets.begin(), targets.end(), 0);
@@ -91,11 +97,12 @@ void AnimatedLightEffect::UpdateGroup(huestream::GroupPtr group) {
     const auto now = std::chrono::steady_clock::now();
     std::size_t channelIndex = 0;
     for (const auto &light : *group->GetLights()) {
+        if (targets.size() == 0) {
+            return;
+        }
+
         if (!light) {
             continue;
-        }
-        if (channelIndex != 0 && channelIndex % targets.size() == 0) {
-            std::shuffle(targets.begin(), targets.end(), m_random);
         }
 
         const auto currentColor = light->GetColor();
@@ -105,102 +112,56 @@ void AnimatedLightEffect::UpdateGroup(huestream::GroupPtr group) {
             startColor,
             startColor,
             targetIndex,
+            targetIndex,
             now,
             m_definition.entryDuration,
-            true};
+        };
         ++channelIndex;
     }
 }
 
-void AnimatedLightEffect::Render() {
+void ManualLightEffect::Render() {
     const auto now = std::chrono::steady_clock::now();
     for (auto &[id, state] : m_channels) {
         (void)id;
         const RgbColor targetColor = paletteColor(state.targetIndex);
 
-        if (state.entering) {
-            const double progress = transitionProgress(state, now);
-            state.renderedColor = interpolate(state.startColor, targetColor, progress);
-            if (progress >= 1.0) {
-                state.entering = false;
-                state.startColor = targetColor;
-                state.renderedColor = targetColor;
-                state.transitionStart = now;
-                state.transitionDuration = nextDuration();
-                state.targetIndex = chooseNextTarget(state.targetIndex);
-                if (m_definition.mode == TransitionMode::Snap) {
-                    state.startColor = paletteColor(state.targetIndex);
-                    state.renderedColor = state.startColor;
-                }
-            }
-            continue;
-        }
-
-        if (m_definition.mode == TransitionMode::Snap) {
-            state.renderedColor = targetColor;
-            if (transitionProgress(state, now) >= 1.0) {
-                state.targetIndex = chooseNextTarget(state.targetIndex);
-                state.startColor = paletteColor(state.targetIndex);
-                state.renderedColor = state.startColor;
-                state.transitionStart = now;
-                state.transitionDuration = nextDuration();
-            }
-            continue;
-        }
-
         const double progress = transitionProgress(state, now);
         state.renderedColor = interpolate(state.startColor, targetColor, progress);
         if (progress >= 1.0) {
-            state.startColor = targetColor;
             state.renderedColor = targetColor;
-            state.targetIndex = chooseNextTarget(state.targetIndex);
-            state.transitionStart = now;
-            state.transitionDuration = nextDuration();
         }
     }
 }
 
-huestream::Color AnimatedLightEffect::GetColor(huestream::LightPtr light) {
+std::string ManualLightEffect::GetTypeName() const {
+    return "VenHue.ManualLightEffect";
+}
+
+huestream::Color ManualLightEffect::GetColor(huestream::LightPtr light) {
     if (!light) {
         return {};
     }
+
     const auto channel = m_channels.find(light->GetId());
     if (channel == m_channels.end()) {
-        return {};
+        return{};
     }
+
     const auto &color = channel->second.renderedColor;
     return {color.red, color.green, color.blue};
 }
 
-std::string AnimatedLightEffect::GetTypeName() const {
-    return "VenHue.AnimatedLightEffect";
-}
-
-RgbColor AnimatedLightEffect::paletteColor(std::size_t index) const {
+RgbColor ManualLightEffect::paletteColor(std::size_t index) const {
     const auto &color = m_definition.palette[index];
     return {
         color.red * m_definition.brightness,
         color.green * m_definition.brightness,
-        color.blue * m_definition.brightness};
+        color.blue * m_definition.brightness
+    };
 }
 
-std::size_t AnimatedLightEffect::chooseNextTarget(std::size_t currentTarget) {
-    std::uniform_int_distribution<std::size_t> distribution(0, m_definition.palette.size() - 2);
-    std::size_t target = distribution(m_random);
-    if (target >= currentTarget) {
-        ++target;
-    }
-    return target;
-}
-
-std::chrono::milliseconds AnimatedLightEffect::nextDuration() {
-    std::uniform_real_distribution<double> distribution(1.0 - m_definition.durationJitter,
-                                                        1.0 + m_definition.durationJitter);
-    const auto milliseconds = static_cast<long long>(std::llround(m_definition.duration.count() * distribution(m_random)));
-    return std::chrono::milliseconds(std::max(1LL, milliseconds));
-}
-
-double AnimatedLightEffect::transitionProgress(const ChannelState &state, std::chrono::steady_clock::time_point now) const {
+double ManualLightEffect::transitionProgress(const ChannelState &state, std::chrono::steady_clock::time_point now) const {
     if (state.transitionDuration.count() <= 0) {
         return 1.0;
     }
@@ -208,11 +169,7 @@ double AnimatedLightEffect::transitionProgress(const ChannelState &state, std::c
     return std::clamp(elapsed / state.transitionDuration.count(), 0.0, 1.0);
 }
 
-RgbColor AnimatedLightEffect::interpolate(const RgbColor &start, const RgbColor &end, double progress) const {
-    if (m_definition.curve == TransitionCurve::EaseInOutSine) {
-        progress = -(std::cos(PI * progress) - 1.0) / 2.0;
-    }
-
+RgbColor ManualLightEffect::interpolate(const RgbColor &start, const RgbColor &end, double progress) const {
     HsvColor startHsv = rgbToHsv(start);
     HsvColor endHsv = rgbToHsv(end);
     if (startHsv.saturation == 0.0) {
@@ -237,4 +194,32 @@ RgbColor AnimatedLightEffect::interpolate(const RgbColor &start, const RgbColor 
     return hsvToRgb({hue,
                      startHsv.saturation + (endHsv.saturation - startHsv.saturation) * progress,
                      startHsv.value + (endHsv.value - startHsv.value) * progress});
+}
+
+void ManualLightEffect::handleCommand(KeyframeCommand command) {
+
+    if (m_definition.palette.empty()) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    for (auto &[id, state] : m_channels) {
+        switch (command) {
+            case KeyframeCommand::NEXT:
+                state.targetIndex = (state.targetIndex + 1) % m_definition.palette.size();
+                break;
+            case KeyframeCommand::PREV:
+                state.targetIndex = (state.targetIndex + m_definition.palette.size() - 1) % m_definition.palette.size();
+                break;
+            case KeyframeCommand::FIRST:
+                state.targetIndex = state.startIndex;
+                break;
+            default:
+                break;
+        }
+
+        state.startColor = state.renderedColor;
+        state.transitionStart = now;
+        state.transitionDuration = m_definition.transitionDuration;
+    }
 }

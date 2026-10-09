@@ -1,13 +1,9 @@
 #pragma once
 
+#include "rgb_color.h"
+
 #include <chrono>
 #include <vector>
-
-struct RgbColor {
-    double red;
-    double green;
-    double blue;
-};
 
 enum class TransitionMode {
     Fade,
