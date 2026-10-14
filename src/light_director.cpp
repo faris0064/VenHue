@@ -31,7 +31,8 @@ constexpr std::array ANIMATED_EFFECTS{
     std::pair{LightDirector::LightingFX::FRENZY, std::string_view{"frenzy"}},
     std::pair{LightDirector::LightingFX::SILHOUETTES, std::string_view{"silhouettes"}},
     std::pair{LightDirector::LightingFX::SILHOUETTES_SPOT, std::string_view{"silhouettes_spot"}},
-    std::pair{LightDirector::LightingFX::BRE, std::string_view{"bre"}}
+    std::pair{LightDirector::LightingFX::BRE, std::string_view{"bre"}},
+    std::pair{LightDirector::LightingFX::SEARCHLIGHTS, std::string_view{"searchlights"}}
 };
 
 constexpr std::array MANUAL_EFFECTS {
