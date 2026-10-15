@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <print>
 
 namespace Logger {
     std::string getCurrentTime() {
@@ -24,7 +25,7 @@ namespace Logger {
 
     void log(const std::string &message, const std::string level) {
         std::string logMessage = getCurrentTime() + " [" + level + "] " + message;
-        std::cout << logMessage << std::endl;
+        std::println("{}", logMessage);
         std::ofstream logFile("log.txt", std::ios::app);
         logFile << logMessage << std::endl;
         logFile.close();

@@ -12,7 +12,7 @@
 
 #include <array>
 #include <cmath>
-#include <optional>
+#include <expected>
 #include <qcoreapplication.h>
 #include <qfiledevice.h>
 #include <qjsondocument.h>
@@ -189,25 +189,22 @@ namespace {
         return true;
     }
 
-    // Replace return type with std::expected once i figure out why c++23 wasn't working
-    std::optional<QJsonObject> parseEffectsObject(const QString &path) {
+    std::expected<QJsonObject, std::string> parseEffectsObject(const QString &path) {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly)) {
-            Logger::error("Unable to load light effects from " + path.toStdString() + ": " + file.errorString().toStdString());
-            return std::nullopt;
+            return std::unexpected<std::string>{std::format("Unable to load light effects from {}: {}", path.toStdString(), file.errorString().toStdString())};
         }
         
         QJsonParseError parseError;
         const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
 
         if (parseError.error != QJsonParseError::NoError) {
-            Logger::error("Unable to parse light effects from " + path.toStdString() + ": " + parseError.errorString().toStdString());
-            return std::nullopt;
+            return std::unexpected<std::string>{std::format("Unable to parse light effects from {}: {}", path.toStdString(), parseError.errorString().toStdString())};
         }
 
         if (!document.isObject() || !document.object().value(QStringLiteral("effects")).isObject()) {
-            Logger::warning("Light effects file must contain a top-level effects object.");
-            return std::nullopt;
+            //Logger::warning("Light effects file must contain a top-level effects object.");
+            return std::unexpected<std::string>{"Light effects file must contain a top-level efffects object."};
         }
 
         return document.object().value(QStringLiteral("effects")).toObject();
@@ -220,9 +217,10 @@ AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::s
     AnimatedEffectDefinitions definitions;
     const std::set<std::string_view, std::less<>> validEffectNames(effectNames.begin(), effectNames.end());
     const QString path = QCoreApplication::applicationDirPath() + QStringLiteral("/light_effects.json");
-    const std::optional<QJsonObject> effects = parseEffectsObject(path);
+    const std::expected<QJsonObject, std::string> effects = parseEffectsObject(path);
 
-    if (effects == std::nullopt) {
+    if (!effects) {
+        Logger::error(effects.error());
         return definitions;
     }
 
@@ -262,9 +260,10 @@ ManualEffectDefinitions loadManualEffectDefinitions(const std::vector<std::strin
 
     const std::set<std::string_view, std::less<>> validEffectNames(effectNames.begin(), effectNames.end());
     const QString path = QCoreApplication::applicationDirPath() + QStringLiteral("/light_effects.json");
-    const std::optional<QJsonObject> effects = parseEffectsObject(path);
+    const std::expected<QJsonObject, std::string> effects = parseEffectsObject(path);
 
-    if (effects == std::nullopt) {
+    if (!effects) {
+        Logger::error(effects.error());
         return definitions;
     }
 

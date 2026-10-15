@@ -110,7 +110,7 @@
       "shuffle": true
     },
     "chorus": {
-      "palette": [[1.0, 0.02, 0.02], [1.0, 0.0, 0.45], [0.45, 0.0, 1.0], [0.02, 0.12, 1.0]],
+      "palette": [[1.0, 0.0, 0.2], [0.0, 0.2, 1.0]],
       "brightness": 1.0,
       "entry_duration_ms": 80,
       "transition_duration_ms": 80,
