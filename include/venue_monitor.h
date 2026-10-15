@@ -30,7 +30,7 @@ private slots:
 private:
     bool isSongPlaying();
     void handleLightingFileError();
-    void printActiveEffect(const VenueData &data, double currentTime);
+    void emitActiveEffect(const VenueData &data, double currentTime);
     void processCrossedKeyframes(const VenueData &data);
 
     Parser parser;

@@ -919,8 +919,6 @@ void LightDirector::applyFullEffect() {
 void LightDirector::updateFromEffectString(const std::string &effectName) {
     // TODO: Parse the effect string to separate LightingFX and PostFX
     
-    Logger::info(std::format("Updating lights from effect string: {}", effectName));
-    
     LightingFX lightingFx = stringToLightingFX(effectName);
     m_currentLightingFX = lightingFx;
     

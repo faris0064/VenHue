@@ -68,7 +68,7 @@ void VenueMonitor::onMonitorTimer() {
 
                 if (std::abs(newData.currentElapsed - lastElapsed) > 0.0001) {
                     emit timingUpdated(newData);
-                    printActiveEffect(newData, newData.currentElapsed);
+                    emitActiveEffect(newData, newData.currentElapsed);
                     processCrossedKeyframes(newData);
                     lastElapsed = newData.currentElapsed;
                 }
@@ -103,11 +103,11 @@ bool VenueMonitor::isSongPlaying() {
 
 void VenueMonitor::handleLightingFileError() {
     if (isSongPlaying() && !lastKnownData.timeline.empty()) {
-        printActiveEffect(lastKnownData, lastKnownData.currentElapsed);
+        emitActiveEffect(lastKnownData, lastKnownData.currentElapsed);
     }
 }
 
-void VenueMonitor::printActiveEffect(const VenueData &data, double currentTime) {
+void VenueMonitor::emitActiveEffect(const VenueData &data, double currentTime) {
     std::string activeEffect = parser.findActiveEffect(data, currentTime);
 
     QString newEffect = activeEffect.empty() ? "Idle..." : QString::fromStdString(activeEffect);
@@ -121,8 +121,6 @@ void VenueMonitor::printActiveEffect(const VenueData &data, double currentTime) 
     if (!activeEffect.empty()) {
         emit effectChanged(activeEffect, data, currentTime);
     }
-
-    Logger::info(activeEffect.empty() ? "Idle..." : activeEffect);
 }
 
 void VenueMonitor::processCrossedKeyframes(const VenueData &data) {
