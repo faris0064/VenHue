@@ -13,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <expected>
+#include <format>
 #include <qcoreapplication.h>
 #include <qfiledevice.h>
 #include <qjsondocument.h>
@@ -103,12 +104,12 @@ namespace {
         palette.reserve(colors.size());
         for (qsizetype colorIndex = 0; colorIndex < colors.size(); ++colorIndex) {
             if (!colors.at(colorIndex).isArray()) {
-                error = "palette color " + std::to_string(colorIndex) + " must be an array";
+                error = std::format("palette color {} must be an array", colorIndex);
                 return false;
             }
             const QJsonArray channels = colors.at(colorIndex).toArray();
             if (channels.size() != 3) {
-                error = "palette color " + std::to_string(colorIndex) + " must contain exactly three values";
+                error = std::format("palette color {} must contain exactly three values", colorIndex);
                 return false;
             }
 
@@ -117,7 +118,7 @@ namespace {
                 const QJsonValue channel = channels.at(channelIndex);
                 const double channelValue = channel.toDouble();
                 if (!channel.isDouble() || !std::isfinite(channelValue) || channelValue < 0.0 || channelValue > 1.0) {
-                    error = "palette color " + std::to_string(colorIndex) + " contains an invalid RGB value";
+                    error = std::format("palette color {} contains an invalid RGB value", colorIndex);
                     return false;
                 }
                 channelValues[static_cast<std::size_t>(channelIndex)] = channelValue;
@@ -231,7 +232,7 @@ AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::s
             continue;
         }
         if (!effect.value().isObject()) {
-            Logger::warning("Invalid animated light effect definition for " + name + ": definition must be an object. This effect will fall back to static lighting.");
+            Logger::warning(std::format("Invalid animated light effect definition for {}: definition must be an object. This effect will fall back to static lighting.", name));
             invalidDefinitions.insert(name);
             continue;
         }
@@ -239,7 +240,7 @@ AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::s
         AnimatedEffectDefinition definition;
         std::string error;
         if (!parseAnimatedDefinition(effect.value().toObject(), definition, error)) {
-            Logger::warning("Invalid animated light effect definition for " + name + ": " + error + ". This effect will fall back to static lighting.");
+            Logger::warning(std::format("Invalid animated light effect definition for {}: {}. This effect will fall back to static lighting.", name, error));
             invalidDefinitions.insert(name);
             continue;
         }
@@ -248,10 +249,10 @@ AnimatedEffectDefinitions loadAnimatedEffectDefinitions(const std::vector<std::s
 
     for (const std::string_view name : effectNames) {
         if (definitions.count(name) == 0 && invalidDefinitions.count(name) == 0) {
-            Logger::warning("Animated light effect definition missing for " + std::string(name) + ". This effect will fall back to static lighting.");
+            Logger::warning(std::format("Animated light effect definition missing for {}. This effect will fall back to static lighting.", name));
         }
     }
-    Logger::info("Loaded " + std::to_string(definitions.size()) + " animated light effect definitions from " + path.toStdString());
+    Logger::info(std::format("Loaded {} animated light effect definitions from {}", definitions.size(), path.toStdString()));
     return definitions;
 }
 
@@ -274,7 +275,7 @@ ManualEffectDefinitions loadManualEffectDefinitions(const std::vector<std::strin
             continue;
         }
         if (!effect.value().isObject()) {
-            Logger::warning("Invalid manual light effect definition for " + name + ": definition must be an object. This effect will fall back to static lighting.");
+            Logger::warning(std::format("Invalid manual light effect definition for {}: definition must be an object. This effect will fall back to static lighting.", name));
             invalidDefinitions.insert(name);
             continue;
         }
@@ -282,7 +283,7 @@ ManualEffectDefinitions loadManualEffectDefinitions(const std::vector<std::strin
         ManualEffectDefinition definition;
         std::string error;
         if (!parseManualDefinition(effect.value().toObject(), definition, error)) {
-            Logger::warning("Invalid manual light effect definition for " + name + ": " + error + ". This effect will fall back to static lighting.");
+            Logger::warning(std::format("Invalid manual light effect definition for {}: {}. This effect will fall back to static lighting.", name, error));
             invalidDefinitions.insert(name);
             continue;
         }
@@ -291,9 +292,9 @@ ManualEffectDefinitions loadManualEffectDefinitions(const std::vector<std::strin
 
     for (const std::string_view name : effectNames) {
         if (definitions.count(name) == 0 && invalidDefinitions.count(name) == 0) {
-            Logger::warning("Manual light effect definition missing for " + std::string(name) + ". This effect will fall back to static lighting.");
+            Logger::warning(std::format("Manual light effect definition missing for {}. This effect will fall back to static lighting.", name));
         }
     }
-    Logger::info("Loaded " + std::to_string(definitions.size()) + " Manual light effect definitions from " + path.toStdString());
+    Logger::info(std::format("Loaded {} Manual light effect definitions from {}", definitions.size(), path.toStdString()));
     return definitions;
 }

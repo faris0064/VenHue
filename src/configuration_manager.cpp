@@ -1,5 +1,6 @@
 #include "include/configuration_manager.h"
 #include "include/logger.h"
+#include <format>
 #include <QDir>
 #include <QFile>
 #include <QStringList>
@@ -90,7 +91,7 @@ void ConfigurationManager::setPlatform(const QString &platform) {
     if (m_platform != platform) {
         m_platform = platform;
         saveSettings();
-        Logger::info("ConfigurationManager: Platform set to " + platform.toStdString());
+        Logger::info(std::format("ConfigurationManager: Platform set to {}", platform.toStdString()));
     }
 }
 
@@ -142,7 +143,7 @@ void ConfigurationManager::loadSettings() {
     }
     
     if (!m_platform.isEmpty()) {
-        Logger::info("ConfigurationManager: Loaded platform: " + m_platform.toStdString());
+        Logger::info(std::format("ConfigurationManager: Loaded platform: {}", m_platform.toStdString()));
     }
 }
 

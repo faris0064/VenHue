@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
-#include <iostream>
+#include <format>
 #include <map>
 #include <optional>
 #include <string>
@@ -40,7 +40,7 @@ VenueData Parser::parseDataFile(const std::string &filename) {
     std::ifstream file(filename);
 
     if (!file.is_open()) {
-        Logger::error("Failed to open dx lighting file: " + filename);
+        Logger::error(std::format("Failed to open dx lighting file: {}", filename));
         return result;
     }
 
@@ -110,7 +110,7 @@ bool Parser::updateDataFile(const std::string &filename, VenueData &data) {
 
     struct stat fileInfo;
     if (stat(filename.c_str(), &fileInfo) != 0) {
-        Logger::error("Failed to get file info for: " + filename);
+        Logger::error(std::format("Failed to get file info for: {}", filename));
         return false;
     }
 

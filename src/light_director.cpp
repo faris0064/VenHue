@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <algorithm>
 #include <array>
+#include <format>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -109,7 +110,7 @@ void LightDirector::handleHueStreamFeedback(int rawMessageId, int rawRequestType
     using namespace huestream;
     const auto messageId = static_cast<FeedbackMessage::Id>(rawMessageId);
     const auto requestType = static_cast<FeedbackMessage::RequestType>(rawRequestType);
-    Logger::hue("Hue feedback message=" + std::to_string(rawMessageId) + " request=" + std::to_string(rawRequestType));
+    Logger::hue(std::format("Hue feedback message={} request={}", rawMessageId, rawRequestType));
 
     switch (messageId) {
         case FeedbackMessage::ID_START_SEARCHING:
@@ -410,7 +411,7 @@ LightDirector::LightingFX LightDirector::stringToLightingFX(const std::string &e
     if (effectName == "flare_fast") return LightingFX::FLARE_FAST;
     if (effectName == "bre") return LightingFX::BRE;
     
-    Logger::warning("Unknown LightingFX string: " + effectName);
+    Logger::warning(std::format("Unknown LightingFX string: {}", effectName));
     return LightingFX::IDLE;
 }
 
@@ -446,7 +447,7 @@ LightDirector::PostFX LightDirector::stringToPostFX(const std::string &effectNam
     if (effectName == "psych_blue_red") return PostFX::PSYCH_BLUE_RED;
     if (effectName == "space_woosh") return PostFX::SPACE_WOOSH;
     
-    Logger::warning("Unknown PostFX string: " + effectName);
+    Logger::warning(std::format("Unknown PostFX string: {}", effectName));
     return PostFX::DEFAULT;
 }
 
@@ -845,10 +846,7 @@ void LightDirector::applyToHueLights(const LightingData &finalLighting) {
     effect->SetFixedOpacity(finalLighting.brightness);
     replaceActiveEffect(effect);
     
-    Logger::info("Applied lighting: R=" + std::to_string(finalLighting.red) + 
-                 " G=" + std::to_string(finalLighting.green) + 
-                 " B=" + std::to_string(finalLighting.blue) + 
-                 " Brightness=" + std::to_string(finalLighting.brightness));
+    Logger::info(std::format("Applied lighting: R={} G={} B={} Brightness={}", finalLighting.red, finalLighting.green, finalLighting.blue, finalLighting.brightness));
 }
 
 void LightDirector::replaceActiveEffect(const huestream::EffectPtr &effect) {
@@ -921,7 +919,7 @@ void LightDirector::applyFullEffect() {
 void LightDirector::updateFromEffectString(const std::string &effectName) {
     // TODO: Parse the effect string to separate LightingFX and PostFX
     
-    Logger::info("Updating lights from effect string: " + effectName);
+    Logger::info(std::format("Updating lights from effect string: {}", effectName));
     
     LightingFX lightingFx = stringToLightingFX(effectName);
     m_currentLightingFX = lightingFx;
@@ -933,7 +931,7 @@ void LightDirector::updateFromEffectString(const std::string &effectName) {
 
 // Receives effect changes from VenueMonitor
 void LightDirector::onEffectChanged(const std::string &effectName, const VenueData &data, double currentTime) {
-    Logger::info("Effect changed to: " + effectName + " at time: " + std::to_string(currentTime));
+    Logger::info(std::format("Effect changed to: {} at time: {}", effectName, currentTime));
     m_latestStrobeTiming = StrobeTiming{data.bpm, data.beat, std::chrono::steady_clock::now()};
     updateFromEffectString(effectName);
 }
